@@ -9,7 +9,7 @@ import (
 
 func main() {
 	// replace CLI flag with a const text to make running `go run main.go` simple
-	const text = "気象庁によりますと、4日午前3時、熱帯低気圧が奄美大島の東の海上で台風15号に変わりました。"
+	const text = "秋田県仙北市は市内を流れる入見内川の水位が高まっているため、午前8時40分、角館町西長野の283世帯649人に高齢者等避難の情報を出しました。5段階の警戒レベルのうちレベル3に当たる情報で高齢者や体の不自由な人などに避難を始めるよう呼びかけています。"
 
 	// initialize logs directory (clear existing .json files)
 	if err := InitLogs("logs"); err != nil {
@@ -54,17 +54,46 @@ func main() {
 		return
 	}
 
+	// merge verb+auxiliary tokens
+	mergedTokens := MergeVerbAuxiliaries(tokenized.Tokens)
+
+	// output both original and merged tokens
+	tokensOut := map[string]interface{}{
+		"original_tokens": tokenized.Tokens,
+		"merged_tokens":   mergedTokens,
+	}
+
 	// print tokens as JSON so you can inspect the tokenizer output
-	tokOut, _ := json.MarshalIndent(tokenized.Tokens, "", "  ")
+	tokOut, _ := json.MarshalIndent(tokensOut, "", "  ")
 	fmt.Println(string(tokOut))
 
 	// write tokens to logs/<id>_tokens.json
-	if err := LogJSON("logs", s.ID+"_tokens", tokenized.Tokens); err != nil {
+	if err := LogJSON("logs", s.ID+"_tokens", tokensOut); err != nil {
 		fmt.Println("failed to write token log:", err)
 	}
 
-	// lookup
-	entries, err := Lookup(ctx, tokenized.Tokens)
+	// dictionary lookup (new step)
+	dictEntries, err := LookupDictionary(ctx, mergedTokens)
+	if err != nil {
+		fmt.Println("dictionary lookup error:", err)
+		return
+	}
+	// enrich mergedTokens with dictionary entries
+	for i := range mergedTokens {
+		mergedTokens[i].DictionaryEntry = dictEntries[i]
+	}
+	// log enriched tokens
+	if err := LogJSON("logs", s.ID+"_enriched_tokens", mergedTokens); err != nil {
+		fmt.Println("failed to write enriched token log:", err)
+	}
+
+	// log dictionary results
+	if err := LogJSON("logs", s.ID+"_dict", dictEntries); err != nil {
+		fmt.Println("failed to write dictionary log:", err)
+	}
+
+	// lookup (legacy, for analysis)
+	entries, err := Lookup(ctx, mergedTokens)
 	if err != nil {
 		fmt.Println("lookup error:", err)
 		return

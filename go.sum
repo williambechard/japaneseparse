@@ -2,7 +2,7 @@ github.com/ikawaha/kagome-dict v1.1.6 h1:bpMDkXEbHsgh/gdqNMpASM5EDd/jpRtzm2AFJTG
 github.com/ikawaha/kagome-dict v1.1.6/go.mod h1:kVQBTitXg2pqmQUMFqGOw60e14zahWKyEyuZW2n7Yus=
 github.com/ikawaha/kagome-dict/ipa v1.2.5 h1:uX9D/T7xNpx1nleDU6SSbpaYHgiAhRs9IIEkcWu9XLQ=
 github.com/ikawaha/kagome-dict/ipa v1.2.5/go.mod h1:mfrhW/dynf56fNLSD4fyC29wQsEffWJj7trEJjSZz5Q=
-github.com/ikawaha/kagome-dict/uni v1.2.5 h1:YlzuB1CG0HkawuX0eRIjDgoazsT89nYd4nXnQyDyIlU=
-github.com/ikawaha/kagome-dict/uni v1.2.5/go.mod h1:1UYPVH+GZ5NYiYLfKQG57v3gLbzdxLP5eYZ9sLlaI/M=
 github.com/ikawaha/kagome/v2 v2.10.2 h1:5bWo0LJqJHzjtpeLQ+XO5IMdyLOMr52de28czE+s1r0=
 github.com/ikawaha/kagome/v2 v2.10.2/go.mod h1:vUBsiTqPQiG+dqSHmvRz3rWb3sCwnS6WO3HNXSPclL4=
+github.com/yomidevs/jmdict-go v0.0.0-20241008135154-36b8b64ae145 h1:ZzUnFFKH4mffBuzUCv2K8Ui38s3QpJf3PGxZSlotHnU=
+github.com/yomidevs/jmdict-go v0.0.0-20241008135154-36b8b64ae145/go.mod h1:1B9+fceSi74MbSl6J22epJS1d583dRGXHOBFSpnDpjQ=
