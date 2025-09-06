@@ -5,20 +5,23 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
+	"unicode"
 
 	jmdict "github.com/yomidevs/jmdict-go"
 )
 
-// DictionaryEntry represents a dictionary definition for a token.
+// DictionaryEntry represents enriched dictionary info for a token.
 type DictionaryEntry struct {
-	Text          string   `json:"text"`
-	Lemma         string   `json:"lemma"`
-	POS           string   `json:"pos"`
-	Reading       string   `json:"reading,omitempty"`
-	Pronunciation string   `json:"pronunciation,omitempty"`
-	Definitions   []string `json:"definitions"`
-	Source        string   `json:"source"` // e.g. "JMdict", "EDICT", "placeholder"
+	Kanji      []string `json:"kanji,omitempty"`
+	Readings   []string `json:"readings,omitempty"`
+	Glosses    []string `json:"glosses,omitempty"`
+	POS        []string `json:"pos,omitempty"`
+	UsageNotes []string `json:"usage_notes,omitempty"`
+	Examples   []string `json:"examples,omitempty"`
+	Frequency  string   `json:"frequency,omitempty"`
+	Source     string   `json:"source"`
 }
 
 var (
@@ -29,6 +32,11 @@ var (
 	enamDictOnce sync.Once
 	enamIndex    map[string][]*jmdict.JmdictEntry
 )
+
+// InitDictionaries initializes the dictionaries by loading JMdict and ENAMDICT files.
+func InitDictionaries(jmdictPath, enamdictPath string) error {
+	return LoadJMdict(jmdictPath, enamdictPath)
+}
 
 // LoadJMdict loads JMdict and ENAMDICT files and builds lookup maps, with error logging.
 func LoadJMdict(jmdictPath, enamdictPath string) error {
@@ -84,104 +92,123 @@ func LoadJMdict(jmdictPath, enamdictPath string) error {
 	return err
 }
 
-// LookupJMdictEntry looks up a token in JMdict and ENAMDICT, aggregating all matching definitions.
-func LookupJMdictEntry(token Token) (DictionaryEntry, bool) {
-
-	debugGlossaryFields() // Print JmdictGlossary fields for debugging
-
-	// Try lemma, reading, then surface form
-	keys := []string{token.Lemma, token.Reading, token.Text}
-	defs := []string{}
-	var source string
-	found := false
-	for _, key := range keys {
-		if key == "" {
-			continue
-		}
-		if entries, ok := jmIndex[key]; ok && len(entries) > 0 {
-			// for _, entry := range entries {
-			// 	for _, sense := range entry.Sense {
-			// 		for _, gloss := range sense.Glossary {
-			// 			defs = append(defs, gloss.Gloss) // commented for debug
-			// 		}
-			// 	}
-			// }
-			source = "JMdict"
-			found = true
-		}
-		if entries, ok := enamIndex[key]; ok && len(entries) > 0 {
-			// for _, entry := range entries {
-			// 	for _, sense := range entry.Sense {
-			// 		for _, gloss := range sense.Glossary {
-			// 			defs = append(defs, gloss.Gloss) // commented for debug
-			// 		}
-			// 	}
-			// }
-			if !found { // Prefer JMdict if found
-				source = "ENAMDICT"
-				found = true
-			}
+// LookupJMdictEntry looks up a normalized key in JMdict.
+func LookupJMdictEntry(key string) (*jmdict.JmdictEntry, bool) {
+	keyNorm := normalizeJapanese(key)
+	for dictKey, entries := range jmIndex {
+		dictKeyNorm := normalizeJapanese(dictKey)
+		if keyNorm == dictKeyNorm || strings.Contains(dictKeyNorm, keyNorm) {
+			return entries[0], true
 		}
 	}
-	if found && len(defs) > 0 {
-		return DictionaryEntry{
-			Text:          token.Text,
-			Lemma:         token.Lemma,
-			POS:           token.POS,
-			Reading:       token.Reading,
-			Pronunciation: token.Pronunciation,
-			Definitions:   defs,
-			Source:        source,
-		}, true
-	}
-	// Fallback stub for EDICT/Jisho
-	return DictionaryEntry{
-		Text:          token.Text,
-		Lemma:         token.Lemma,
-		POS:           token.POS,
-		Reading:       token.Reading,
-		Pronunciation: token.Pronunciation,
-		Definitions:   []string{"<no definition found>", "(EDICT/Jisho fallback stub)"},
-		Source:        "none",
-	}, false
+	return nil, false
 }
 
-// convertJMdictEntry converts a jmdict.Entry to DictionaryEntry.
-func convertJMdictEntry(token Token, entry *jmdict.JmdictEntry, source string) DictionaryEntry {
-	defs := []string{}
-	// for _, sense := range entry.Sense {
-	// 	for _, gloss := range sense.Glossary {
-	// 		defs = append(defs, gloss.Gloss) // commented for debug
-	// 	}
-	// }
+// LookupENAMDICTEntry looks up a normalized key in ENAMDICT.
+func LookupENAMDICTEntry(key string) (*jmdict.JmdictEntry, bool) {
+	keyNorm := normalizeJapanese(key)
+	for dictKey, entries := range enamIndex {
+		dictKeyNorm := normalizeJapanese(dictKey)
+		if keyNorm == dictKeyNorm || strings.Contains(dictKeyNorm, keyNorm) {
+			return entries[0], true
+		}
+	}
+	return nil, false
+}
+
+// normalizeJapanese normalizes a Japanese string for dictionary lookup.
+func normalizeJapanese(s string) string {
+	s = strings.ToLower(s)
+	// Convert katakana to hiragana
+	var out []rune
+	for _, r := range s {
+		// Katakana range: U+30A0 to U+30FF
+		if r >= 0x30A0 && r <= 0x30FF {
+			// Hiragana starts at U+3040
+			out = append(out, r-0x60)
+		} else if unicode.IsPunct(r) || unicode.IsSpace(r) {
+			// Skip punctuation and whitespace
+			continue
+		} else {
+			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
+// convertJMdictEntry converts a JMdict entry to DictionaryEntry with enrichment.
+func convertJMdictEntry(jm *jmdict.JmdictEntry) DictionaryEntry {
+	var kanji, readings, glosses, pos, misc []string
+	if jm == nil {
+		return DictionaryEntry{Source: "JMdict"}
+	}
+	for _, k := range jm.Kanji {
+		kanji = append(kanji, k.Expression)
+	}
+	for _, r := range jm.Readings {
+		readings = append(readings, r.Reading)
+	}
+	for _, s := range jm.Sense {
+		for _, g := range s.Glossary {
+			glosses = append(glosses, g.Content)
+		}
+		pos = append(pos, s.PartsOfSpeech...)
+		misc = append(misc, s.Misc...)
+	}
 	return DictionaryEntry{
-		Text:          token.Text,
-		Lemma:         token.Lemma,
-		POS:           token.POS,
-		Reading:       token.Reading,
-		Pronunciation: token.Pronunciation,
-		Definitions:   defs,
-		Source:        source,
+		Kanji:      kanji,
+		Readings:   readings,
+		Glosses:    glosses,
+		POS:        pos,
+		UsageNotes: misc,
+		Examples:   nil, // Example extraction can be added if needed
+		Frequency:  "",  // Not present in struct
+		Source:     "JMdict",
+	}
+}
+
+// convertENAMDICTEntry converts an ENAMDICT entry to DictionaryEntry with enrichment.
+func convertENAMDICTEntry(enam *jmdict.JmdictEntry) DictionaryEntry {
+	var kanji, readings, glosses, pos []string
+	if enam == nil {
+		return DictionaryEntry{Source: "ENAMDICT"}
+	}
+	for _, k := range enam.Kanji {
+		kanji = append(kanji, k.Expression)
+	}
+	for _, r := range enam.Readings {
+		readings = append(readings, r.Reading)
+	}
+	for _, s := range enam.Sense {
+		for _, g := range s.Glossary {
+			glosses = append(glosses, g.Content)
+		}
+		pos = append(pos, s.PartsOfSpeech...)
+	}
+	return DictionaryEntry{
+		Kanji:    kanji,
+		Readings: readings,
+		Glosses:  glosses,
+		POS:      pos,
+		Source:   "ENAMDICT",
 	}
 }
 
 // LookupDictionary takes a slice of tokens and returns dictionary entries for each.
 func LookupDictionary(ctx context.Context, tokens []Token) ([]DictionaryEntry, error) {
-	// Ensure dictionaries are loaded
-	LoadJMdict("dict/JMdict_e", "dict/enamdict")
+	// Dictionaries are loaded once at startup via InitDictionaries
 	entries := make([]DictionaryEntry, len(tokens))
 	for i, t := range tokens {
-		if def, ok := LookupJMdictEntry(t); ok {
-			entries[i] = def
+		if def, ok := LookupJMdictEntry(t.Text); ok {
+			entries[i] = convertJMdictEntry(def)
+		} else if def, ok := LookupENAMDICTEntry(t.Text); ok {
+			entries[i] = convertENAMDICTEntry(def)
 		} else {
 			entries[i] = DictionaryEntry{
-				Text:          t.Text,
-				Lemma:         t.Lemma,
-				POS:           t.POS,
-				Reading:       t.Reading,
-				Pronunciation: t.Pronunciation,
-				Definitions:   []string{"<no definition found>"},
-				Source:        "none",
+				Kanji:    []string{t.Text},
+				Readings: []string{t.Reading},
+				Glosses:  []string{"<no definition found>"},
+				Source:   "none",
 			}
 		}
 	}

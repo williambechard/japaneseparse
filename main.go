@@ -5,9 +5,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/williambechard/JapaneseParse/dictionary"
+	"github.com/williambechard/JapaneseParse/tokenize"
 )
 
 func main() {
+	// Load dictionaries once at startup
+	if err := dictionary.InitDictionaries("dict/JMdict_e", "dict/enamdict"); err != nil {
+		fmt.Println("Failed to load dictionaries:", err)
+		return
+	}
+
+	// Load Kanjidic2 at startup for furigana alignment
+	if err := tokenize.InitKanjidic2("dict/kanjidic2.xml"); err != nil {
+		fmt.Println("Failed to load Kanjidic2:", err)
+		return
+	}
+	// --- DEBUG: Print kanjiReadingMap status ---
+	fmt.Printf("Kanjidic2 loaded: %d kanji entries\n", len(tokenize.KanjiReadingMap))
+	fmt.Printf("秋 readings: %v\n", tokenize.GetKanjiReadings('秋'))
+	fmt.Printf("田 readings: %v\n", tokenize.GetKanjiReadings('田'))
+
+	dictionary.DebugGlossaryFields()
+
 	// replace CLI flag with a const text to make running `go run main.go` simple
 	const text = "秋田県仙北市は市内を流れる入見内川の水位が高まっているため、午前8時40分、角館町西長野の283世帯649人に高齢者等避難の情報を出しました。5段階の警戒レベルのうちレベル3に当たる情報で高齢者や体の不自由な人などに避難を始めるよう呼びかけています。"
 
@@ -82,6 +103,10 @@ func main() {
 	for i := range mergedTokens {
 		mergedTokens[i].DictionaryEntry = dictEntries[i]
 	}
+
+	// update furigana using dictionary data for best accuracy
+	mergedTokens = UpdateFuriganaFromDictionary(mergedTokens)
+
 	// log enriched tokens
 	if err := LogJSON("logs", s.ID+"_enriched_tokens", mergedTokens); err != nil {
 		fmt.Println("failed to write enriched token log:", err)
@@ -106,7 +131,17 @@ func main() {
 		return
 	}
 
-	out, _ := json.MarshalIndent(analysis, "", "  ")
+	// --- MERGED OUTPUT ---
+	mergedOutput := map[string]interface{}{
+		"sentence_id": s.ID,
+		"token_count": len(mergedTokens),
+		"tokens":      mergedTokens,
+		"analysis":    analysis,
+	}
+	if err := LogJSON("logs", s.ID+"_merged", mergedOutput); err != nil {
+		fmt.Println("failed to write merged output log:", err)
+	}
+	out, _ := json.MarshalIndent(mergedOutput, "", "  ")
 	fmt.Println(string(out))
 
 	// write analysis to logs/<id>_analysis.json
