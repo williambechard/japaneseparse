@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/ikawaha/kagome-dict/ipa"
 	"github.com/ikawaha/kagome/v2/tokenizer"
@@ -70,46 +72,65 @@ type Kanjidic2Root struct {
 	Kanji []Kanjidic2Kanji `xml:"character"`
 }
 
+// Add this to the type definition:
+var _ = xml.Name{Local: "kanjidic2"}
+
 // InitKanjidic2 parses kanjidic2.xml and builds kanji→readings map
 func InitKanjidic2(path string) error {
 	var err error
 	kanjiReadingMapOnce.Do(func() {
 		kanjiReadingMap = make(map[rune][]string)
+		var loadedKanji []string
 		f, fileErr := os.Open(path)
 		if fileErr != nil {
 			log.Printf("Failed to open kanjidic2.xml: %v", fileErr)
 			return
 		}
 		defer f.Close()
-		var root Kanjidic2Root
+
+		// Use xml.Decoder to find <character> elements directly, skipping any wrapper
 		d := xml.NewDecoder(f)
-		if decodeErr := d.Decode(&root); decodeErr != nil {
-			log.Printf("Failed to parse kanjidic2.xml: %v", decodeErr)
-			return
-		}
-		for _, k := range root.Kanji {
-			if len(k.Literal) != 1 {
-				continue
+		for {
+			tok, tokenErr := d.Token()
+			if tokenErr == io.EOF {
+				break
 			}
-			var readings []string
-			for _, group := range k.ReadingMeaning.RMGroup {
-				for _, r := range group.Reading {
-					if r.Type == "ja_on" || r.Type == "ja_kun" {
-						readings = append(readings, r.Value)
+			if tokenErr != nil {
+				log.Printf("Failed to parse kanjidic2.xml: %v", tokenErr)
+				return
+			}
+			switch se := tok.(type) {
+			case xml.StartElement:
+				if se.Name.Local == "character" {
+					var k Kanjidic2Kanji
+					if decodeErr := d.DecodeElement(&k, &se); decodeErr != nil {
+						log.Printf("Failed to decode character: %v", decodeErr)
+						continue
+					}
+					if utf8.RuneCountInString(k.Literal) != 1 {
+						continue
+					}
+					var readings []string
+					for _, group := range k.ReadingMeaning.RMGroup {
+						for _, r := range group.Reading {
+							if r.Type == "ja_on" || r.Type == "ja_kun" {
+								readings = append(readings, r.Value)
+							}
+						}
+					}
+					kanjiRune, _ := utf8.DecodeRuneInString(k.Literal)
+					kanjiReadingMap[kanjiRune] = readings
+					if len(loadedKanji) < 10 {
+						loadedKanji = append(loadedKanji, fmt.Sprintf("%c: %v", kanjiRune, readings))
+					}
+					if kanjiRune == '秋' || kanjiRune == '田' {
+						log.Printf("Loaded readings for %c: %v", kanjiRune, readings)
 					}
 				}
 			}
-			kanjiRune := rune(k.Literal[0])
-			kanjiReadingMap[kanjiRune] = readings
-			if kanjiRune == '秋' || kanjiRune == '田' {
-				log.Printf("Loaded readings for %c: %v", kanjiRune, readings)
-			}
 		}
+		log.Printf("First 10 kanji loaded: %v", loadedKanji)
 		log.Printf("Kanjidic2 loaded: %d kanji entries", len(kanjiReadingMap))
-		// Dump the full map for debugging
-		for k, v := range kanjiReadingMap {
-			log.Printf("Map: %c -> %v", k, v)
-		}
 	})
 	return err
 }
