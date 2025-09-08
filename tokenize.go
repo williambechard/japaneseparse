@@ -10,37 +10,23 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
+
+	"japaneseparse/ingest"
+	"japaneseparse/kanji"
+	"japaneseparse/model"
+
+	"logger/logger"
 
 	"github.com/ikawaha/kagome-dict/ipa"
 	"github.com/ikawaha/kagome/v2/tokenizer"
 )
 
-// Token represents a token / morpheme produced by the tokenizer.
-type Token struct {
-	Text             string          `json:"text"`
-	Lemma            string          `json:"lemma,omitempty"`
-	POS              string          `json:"pos,omitempty"`
-	Start            int             `json:"start"`
-	End              int             `json:"end"`
-	Reading          string          `json:"reading,omitempty"`
-	Pronunciation    string          `json:"pronunciation,omitempty"`
-	TokenID          int             `json:"token_id,omitempty"`
-	Conjugation      []string        `json:"conjugation,omitempty"`
-	Auxiliaries      []Token         `json:"auxiliaries,omitempty"`
-	MergedIndices    []int           `json:"merged_indices,omitempty"`
-	ConjugationLabel string          `json:"conjugation_label,omitempty"`
-	InflectionType   string          `json:"inflection_type,omitempty"`
-	InflectionForm   string          `json:"inflection_form,omitempty"`
-	DictionaryEntry  DictionaryEntry `json:"dictionary_entry,omitempty"`
-	FuriganaText     string          `json:"furigana_text,omitempty"`
-	FuriganaLemma    string          `json:"furigana_lemma,omitempty"`
-}
-
-// Tokenized pairs a Sentence with the tokens produced for it.
+// Tokenized pairs an ingest.Sentence with the tokens produced for it.
 type Tokenized struct {
-	Sentence Sentence
-	Tokens   []Token
+	Sentence ingest.Sentence
+	Tokens   []model.Token
 }
 
 // TokenizedChan publishes tokenization results for downstream processing.
@@ -293,8 +279,8 @@ func getFuriganaFromDictionary(surface string, entry DictionaryEntry) string {
 	return out
 }
 
-func convertKagomeTokens(ktoks []tokenizer.Token) []Token {
-	out := make([]Token, 0, len(ktoks))
+func convertKagomeTokens(ktoks []tokenizer.Token) []model.Token {
+	out := make([]model.Token, 0, len(ktoks))
 	for _, kt := range ktoks {
 		pos := strings.Join(kt.POS(), ",")
 		lemma, _ := kt.BaseForm()
@@ -316,7 +302,7 @@ func convertKagomeTokens(ktoks []tokenizer.Token) []Token {
 			infType = features[4]
 			infForm = features[5]
 		}
-		t := Token{
+		t := model.Token{
 			Text:           kt.Surface,
 			Lemma:          lemma,
 			POS:            pos,
@@ -335,35 +321,57 @@ func convertKagomeTokens(ktoks []tokenizer.Token) []Token {
 	return out
 }
 
-// UpdateFuriganaFromDictionary updates FuriganaText and FuriganaLemma for tokens using dictionary entries
-func UpdateFuriganaFromDictionary(tokens []Token) []Token {
+// UpdateFuriganaFromDictionary updates FuriganaText and FuriganaLemma for tokens using Kanjidic2 alignment
+func UpdateFuriganaFromDictionary(tokens []model.Token) []model.Token {
 	for i := range tokens {
-		dict := tokens[i].DictionaryEntry
-		ft := getFuriganaFromDictionary(tokens[i].Text, dict)
-		fl := getFuriganaFromDictionary(tokens[i].Lemma, dict)
-		if ft != "" {
+		log.Printf("[FURIGANA-DEBUG] Processing token: surface='%s', reading='%s'", tokens[i].Text, tokens[i].Reading)
+		pairsText, stepsText := alignFuriganaAccurate(tokens[i].Text, tokens[i].Reading)
+		pairsLemma, stepsLemma := alignFuriganaAccurate(tokens[i].Lemma, tokens[i].Reading)
+		// Always use Kanjidic2 alignment for any token containing kanji
+		containsKanjiText := false
+		for _, r := range []rune(tokens[i].Text) {
+			if isKanji(r) {
+				containsKanjiText = true
+				break
+			}
+		}
+		containsKanjiLemma := false
+		for _, r := range []rune(tokens[i].Lemma) {
+			if isKanji(r) {
+				containsKanjiLemma = true
+				break
+			}
+		}
+		if containsKanjiText {
+			tokens[i].FuriganaText = formatFuriganaDisplayAccurate(pairsText)
+		} else {
+			// fallback to dictionary furigana for pure kana/non-kanji
+			dict := tokens[i].DictionaryEntry
+			ft := getFuriganaFromDictionary(tokens[i].Text, dict)
 			tokens[i].FuriganaText = ft
-		} else {
-			tokens[i].FuriganaText = formatFuriganaDisplayAccurate(alignFuriganaAccurate(tokens[i].Text, tokens[i].Reading))
 		}
-		if fl != "" {
+		if containsKanjiLemma {
+			tokens[i].FuriganaLemma = formatFuriganaDisplayAccurate(pairsLemma)
+		} else {
+			dict := tokens[i].DictionaryEntry
+			fl := getFuriganaFromDictionary(tokens[i].Lemma, dict)
 			tokens[i].FuriganaLemma = fl
-		} else {
-			tokens[i].FuriganaLemma = formatFuriganaDisplayAccurate(alignFuriganaAccurate(tokens[i].Lemma, tokens[i].Reading))
 		}
+		logFuriganaAlignment(tokens[i].Text, tokens[i].Reading, stepsText, pairsText)
+		logFuriganaAlignment(tokens[i].Lemma, tokens[i].Reading, stepsLemma, pairsLemma)
 	}
 	return tokens
 }
 
 // MergeVerbAuxiliaries scans tokens and merges verb+auxiliary sequences into a single token.
-func MergeVerbAuxiliaries(tokens []Token) []Token {
-	var out []Token
+func MergeVerbAuxiliaries(tokens []model.Token) []model.Token {
+	var out []model.Token
 	i := 0
 	for i < len(tokens) {
 		tk := tokens[i]
 		if strings.HasPrefix(tk.POS, "動詞") {
 			// collect auxiliaries following the verb
-			auxs := []Token{}
+			auxs := []model.Token{}
 			indices := []int{tk.Start}
 			j := i + 1
 			for j < len(tokens) && (strings.HasPrefix(tokens[j].POS, "助動詞") ||
@@ -424,7 +432,7 @@ func getConjugationLabel(auxs []string) string {
 }
 
 // Tokenize uses kagome to produce tokens for the input text (normal mode).
-func Tokenize(ctx context.Context, text string) ([]Token, error) {
+func Tokenize(ctx context.Context, text string) ([]model.Token, error) {
 	if text == "" {
 		return nil, nil
 	}
@@ -439,8 +447,8 @@ func Tokenize(ctx context.Context, text string) ([]Token, error) {
 
 // TokenizeModes runs kagome.Analyze in Normal, Search and Extended modes and returns
 // a map from mode name to the resulting tokens. Useful to compare segmentations.
-func TokenizeModes(ctx context.Context, text string) (map[string][]Token, error) {
-	res := make(map[string][]Token)
+func TokenizeModes(ctx context.Context, text string) (map[string][]model.Token, error) {
+	res := make(map[string][]model.Token)
 	if text == "" || kg == nil {
 		return res, nil
 	}
@@ -461,8 +469,8 @@ func TokenizeModes(ctx context.Context, text string) (map[string][]Token, error)
 }
 
 // TokenizeStream streams tokens to a channel. This is useful for building a concurrent pipeline.
-func TokenizeStream(ctx context.Context, text string) (<-chan Token, <-chan error) {
-	out := make(chan Token, 8)
+func TokenizeStream(ctx context.Context, text string) (<-chan model.Token, <-chan error) {
+	out := make(chan model.Token, 8)
 	errs := make(chan error, 1)
 	go func() {
 		defer close(out)
@@ -488,43 +496,78 @@ func TokenizeStream(ctx context.Context, text string) (<-chan Token, <-chan erro
 // tokenizes them and publishes Tokenized results to TokenizedChan.
 func StartTokenizer(ctx context.Context) {
 	go func() {
+		log.Println("[StartTokenizer] Goroutine started, waiting for sentences...")
 		for {
 			select {
 			case <-ctx.Done():
+				log.Println("[StartTokenizer] Context done, exiting goroutine.")
 				return
-			case s := <-IngestChan:
-				// process s (normal mode)
+			case s := <-ingest.IngestChan:
+				log.Printf("[StartTokenizer] Received sentence: ID=%s, Text=%s", s.ID, s.Text)
 				toks, err := Tokenize(ctx, s.Text)
 				if err != nil {
-					// on error drop for now
+					log.Printf("[StartTokenizer] Tokenize error: %v", err)
 					continue
 				}
+				log.Printf("[StartTokenizer] Tokenized %d tokens for sentence ID=%s", len(toks), s.ID)
 				select {
 				case <-ctx.Done():
+					log.Println("[StartTokenizer] Context done after tokenization, exiting goroutine.")
 					return
 				case TokenizedChan <- Tokenized{Sentence: s, Tokens: toks}:
+					log.Printf("[StartTokenizer] Published tokenized result for sentence ID=%s", s.ID)
 				}
 			}
 		}
 	}()
 }
 
+// sanitizeFilename ensures log filenames are safe and unique
+func sanitizeFilename(s string) string {
+	var out strings.Builder
+	for _, r := range s {
+		if r <= 127 && r != '/' && r != '\\' && r != ':' && r != '*' && r != '?' && r != '"' && r != '<' && r != '>' && r != '|' {
+			out.WriteRune(r)
+		} else {
+			out.WriteString(fmt.Sprintf("_%X_", r))
+		}
+	}
+	return out.String()
+}
+
 // logFuriganaAlignment logs the alignment process to a JSON file for debugging
-func logFuriganaAlignment(tokenText, tokenReading string, steps []map[string]interface{}) {
-	logFile := fmt.Sprintf("logs/%s_furigana.json", tokenText)
-	data, _ := json.MarshalIndent(steps, "", "  ")
+func logFuriganaAlignment(tokenText, tokenReading string, steps []map[string]interface{}, result [][2]string) {
+	timestamp := time.Now().UnixNano()
+	textSafe := sanitizeFilename(tokenText)
+	readingSafe := sanitizeFilename(tokenReading)
+	logFile := fmt.Sprintf("logs/%s_%s_%d_furigana.json", textSafe, readingSafe, timestamp)
+	log.Printf("[FURIGANA-LOG] Writing furigana log for token: surface='%s', reading='%s', filename='%s'", tokenText, tokenReading, logFile)
+	logData := map[string]interface{}{
+		"surface": tokenText,
+		"reading": tokenReading,
+		"steps":   steps,
+		"result":  result,
+	}
+	data, _ := json.MarshalIndent(logData, "", "  ")
 	_ = os.WriteFile(logFile, data, 0644)
 }
 
-// alignFuriganaAccurate splits reading for each kanji by remaining kana and kanji count, using Kanjidic2 readings for kanji
-func alignFuriganaAccurate(surface, reading string) [][2]string {
+// alignFuriganaAccurate returns both alignment pairs and log steps
+func alignFuriganaAccurate(surface, reading string) ([][2]string, []map[string]interface{}) {
 	surfaceRunes := []rune(surface)
-	// Always convert the token's reading to hiragana
-	readingRunes := []rune(katakanaToHiragana(reading))
-	result := make([][2]string, 0)
-	j, k := 0, 0
+	readingRunes := []rune(katakanaToHiragana(reading)) // Ensure reading is always hiragana
 	logSteps := make([]map[string]interface{}, 0)
-	for j < len(surfaceRunes) {
+	logPath := "logs"
+	logID := "furigana_analysis"
+
+	var recur func(j, k int) ([][2]string, bool)
+	recur = func(j, k int) ([][2]string, bool) {
+		if j >= len(surfaceRunes) {
+			if k == len(readingRunes) {
+				return make([][2]string, 0), true
+			}
+			return nil, false
+		}
 		s := surfaceRunes[j]
 		step := map[string]interface{}{
 			"kanji":             string(s),
@@ -532,59 +575,173 @@ func alignFuriganaAccurate(surface, reading string) [][2]string {
 			"remaining_reading": string(readingRunes[k:]),
 			"candidates":        []string{},
 			"chosen":            "",
+			"reason":            "",
 		}
 		if isKanji(s) {
-			kanjiReadings := GetKanjiReadings(s)
+			kanjiReadings := kanji.GetKanjiReadings(s)
 			step["candidates"] = kanjiReadings
-			longestMatch := ""
+			_ = logger.LogJSON(logPath, logID, map[string]interface{}{
+				"event":             "kanji_candidates",
+				"surface":           surface,
+				"reading":           reading,
+				"kanji":             string(s),
+				"candidates":        kanjiReadings,
+				"remaining_reading": string(readingRunes[k:]),
+			})
+			matched := false
 			for _, kr := range kanjiReadings {
-				// Always convert candidate reading to hiragana
-				krH := katakanaToHiragana(kr)
+				krH := katakanaToHiragana(kr) // Ensure candidate is hiragana
 				krRunes := []rune(krH)
+				_ = logger.LogJSON(logPath, logID, map[string]interface{}{
+					"event":             "try_candidate",
+					"surface":           surface,
+					"reading":           reading,
+					"kanji":             string(s),
+					"candidate":         krH,
+					"reading_substring": string(readingRunes[k : k+len(krRunes)]),
+				})
 				if k+len(krRunes) <= len(readingRunes) && string(readingRunes[k:k+len(krRunes)]) == krH {
-					if len(krH) > len(longestMatch) {
-						longestMatch = krH
+					rest, ok := recur(j+1, k+len(krRunes))
+					if ok {
+						step["chosen"] = krH
+						step["reason"] = "substring match"
+						logSteps = append(logSteps, step)
+						_ = logger.LogJSON(logPath, logID, map[string]interface{}{
+							"event":   "candidate_chosen",
+							"surface": surface,
+							"reading": reading,
+							"kanji":   string(s),
+							"chosen":  krH,
+						})
+						return append([][2]string{{string(s), krH}}, rest...), true
 					}
 				}
 			}
-			if len(kanjiReadings) == 0 {
+			if !matched {
 				step["chosen"] = ""
-				result = append(result, [2]string{string(s), ""})
+				if len(kanjiReadings) == 0 {
+					step["reason"] = "no readings found for kanji"
+				} else {
+					step["reason"] = "no candidate matched reading substring"
+				}
 				logSteps = append(logSteps, step)
-				j++
-				continue
+				_ = logger.LogJSON(logPath, logID, map[string]interface{}{
+					"event":   "no_candidate_match",
+					"surface": surface,
+					"reading": reading,
+					"kanji":   string(s),
+				})
+				return append([][2]string{{string(s), ""}}, nil...), false
 			}
-			if longestMatch != "" {
-				result = append(result, [2]string{string(s), longestMatch})
-				step["chosen"] = longestMatch
-				k += len([]rune(longestMatch))
-			} else {
-				step["chosen"] = ""
-				result = append(result, [2]string{string(s), ""})
-			}
-			logSteps = append(logSteps, step)
-			j++
 		} else if isKana(s) {
 			if k < len(readingRunes) && readingRunes[k] == s {
-				result = append(result, [2]string{string(s), string(s)})
 				step["chosen"] = string(s)
-				k++
+				step["reason"] = "kana matches reading"
+				logSteps = append(logSteps, step)
+				rest, ok := recur(j+1, k+1)
+				if ok {
+					return append([][2]string{{string(s), string(s)}}, rest...), true
+				}
 			} else {
-				result = append(result, [2]string{string(s), ""})
 				step["chosen"] = ""
+				step["reason"] = "kana does not match reading"
+				logSteps = append(logSteps, step)
+				rest, ok := recur(j+1, k)
+				if ok {
+					return append([][2]string{{string(s), ""}}, rest...), true
+				}
 			}
-			logSteps = append(logSteps, step)
-			j++
+			return nil, false
 		} else {
-			result = append(result, [2]string{string(s), ""})
 			step["chosen"] = ""
+			step["reason"] = "non-kanji/kana character"
 			logSteps = append(logSteps, step)
-			j++
+			rest, ok := recur(j+1, k)
+			if ok {
+				return append([][2]string{{string(s), ""}}, rest...), true
+			}
+			return nil, false
+		}
+		// Ensure all code paths return
+		return nil, false
+	}
+
+	pairs, ok := recur(0, 0)
+	if !ok {
+		_ = logger.LogJSON(logPath, logID, map[string]interface{}{
+			"event":   "fallback_greedy_alignment",
+			"surface": surface,
+			"reading": reading,
+		})
+		// fallback to greedy
+		fallbackSteps := map[string]interface{}{
+			"reason":  "fallback to greedy alignment",
+			"surface": surface,
+			"reading": reading,
+		}
+		logSteps = append(logSteps, fallbackSteps)
+		pairs = make([][2]string, 0)
+		surfaceRunes := []rune(surface)
+		readingRunes := []rune(katakanaToHiragana(reading))
+		j, k := 0, 0
+		for j < len(surfaceRunes) {
+			s := surfaceRunes[j]
+			step := map[string]interface{}{
+				"kanji":             string(s),
+				"reading_pos":       k,
+				"remaining_reading": string(readingRunes[k:]),
+				"chosen":            "",
+				"reason":            "",
+			}
+			if isKanji(s) {
+				kanjiReadings := kanji.GetKanjiReadings(s)
+				longestMatch := ""
+				for _, kr := range kanjiReadings {
+					krH := katakanaToHiragana(kr)
+					krRunes := []rune(krH)
+					if k+len(krRunes) <= len(readingRunes) && string(readingRunes[k:k+len(krRunes)]) == krH {
+						if len(krH) > len(longestMatch) {
+							longestMatch = krH
+						}
+					}
+				}
+				if longestMatch != "" {
+					step["chosen"] = longestMatch
+					step["reason"] = "greedy longest match"
+					pairs = append(pairs, [2]string{string(s), longestMatch})
+					k += len([]rune(longestMatch))
+				} else {
+					step["chosen"] = ""
+					step["reason"] = "no match in greedy"
+					pairs = append(pairs, [2]string{string(s), ""})
+				}
+				logSteps = append(logSteps, step)
+				j++
+			} else if isKana(s) {
+				if k < len(readingRunes) && readingRunes[k] == s {
+					step["chosen"] = string(s)
+					step["reason"] = "kana matches reading"
+					pairs = append(pairs, [2]string{string(s), string(s)})
+					k++
+				} else {
+					step["chosen"] = ""
+					step["reason"] = "kana does not match reading"
+					pairs = append(pairs, [2]string{string(s), ""})
+				}
+				logSteps = append(logSteps, step)
+				j++
+			} else {
+				step["chosen"] = ""
+				step["reason"] = "non-kanji/kana character"
+				pairs = append(pairs, [2]string{string(s), ""})
+				logSteps = append(logSteps, step)
+				j++
+			}
 		}
 	}
 	// Log alignment for debugging
-	logFuriganaAlignment(surface, reading, logSteps)
-	return result
+	logFuriganaAlignment(surface, reading, logSteps, pairs)
+	return pairs, logSteps
 }
 
 // formatFuriganaDisplayAccurate formats furigana so only kanji get [kanji|furigana], kana are plain

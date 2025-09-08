@@ -9,20 +9,16 @@ import (
 	"sync"
 	"unicode"
 
+	"japaneseparse/model"
+
 	jmdict "github.com/yomidevs/jmdict-go"
 )
 
+// Token represents a token in the text.
+type Token = model.Token
+
 // DictionaryEntry represents enriched dictionary info for a token.
-type DictionaryEntry struct {
-	Kanji      []string `json:"kanji,omitempty"`
-	Readings   []string `json:"readings,omitempty"`
-	Glosses    []string `json:"glosses,omitempty"`
-	POS        []string `json:"pos,omitempty"`
-	UsageNotes []string `json:"usage_notes,omitempty"`
-	Examples   []string `json:"examples,omitempty"`
-	Frequency  string   `json:"frequency,omitempty"`
-	Source     string   `json:"source"`
-}
+type DictionaryEntry = model.DictionaryEntry
 
 var (
 	jmDict       *jmdict.Jmdict
@@ -156,14 +152,11 @@ func convertJMdictEntry(jm *jmdict.JmdictEntry) DictionaryEntry {
 		misc = append(misc, s.Misc...)
 	}
 	return DictionaryEntry{
-		Kanji:      kanji,
-		Readings:   readings,
-		Glosses:    glosses,
-		POS:        pos,
-		UsageNotes: misc,
-		Examples:   nil, // Example extraction can be added if needed
-		Frequency:  "",  // Not present in struct
-		Source:     "JMdict",
+		Kanji:    kanji,
+		Readings: readings,
+		Glosses:  glosses,
+		POS:      pos,
+		Source:   "JMdict",
 	}
 }
 
@@ -195,16 +188,15 @@ func convertENAMDICTEntry(enam *jmdict.JmdictEntry) DictionaryEntry {
 }
 
 // LookupDictionary takes a slice of tokens and returns dictionary entries for each.
-func LookupDictionary(ctx context.Context, tokens []Token) ([]DictionaryEntry, error) {
-	// Dictionaries are loaded once at startup via InitDictionaries
-	entries := make([]DictionaryEntry, len(tokens))
+func LookupDictionary(ctx context.Context, tokens []Token) ([]model.DictionaryEntry, error) {
+	entries := make([]model.DictionaryEntry, len(tokens))
 	for i, t := range tokens {
 		if def, ok := LookupJMdictEntry(t.Text); ok {
 			entries[i] = convertJMdictEntry(def)
 		} else if def, ok := LookupENAMDICTEntry(t.Text); ok {
 			entries[i] = convertENAMDICTEntry(def)
 		} else {
-			entries[i] = DictionaryEntry{
+			entries[i] = model.DictionaryEntry{
 				Kanji:    []string{t.Text},
 				Readings: []string{t.Reading},
 				Glosses:  []string{"<no definition found>"},

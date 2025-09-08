@@ -4,10 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
+	"japaneseparse/analyze"
 	"japaneseparse/dictionary"
+	"japaneseparse/ingest"
 	"japaneseparse/kanji"
+	"japaneseparse/logger"
+	"japaneseparse/lookup"
+	"japaneseparse/model"
 	"japaneseparse/tokenize"
 )
 
@@ -34,13 +40,13 @@ func main() {
 	const text = "秋田県仙北市は市内を流れる入見内川の水位が高まっているため、午前8時40分、角館町西長野の283世帯649人に高齢者等避難の情報を出しました。5段階の警戒レベルのうちレベル3に当たる情報で高齢者や体の不自由な人などに避難を始めるよう呼びかけています。"
 
 	// initialize logs directory (clear existing .json files)
-	if err := tokenize.InitLogs("logs"); err != nil {
+	if err := logger.InitLogs("logs"); err != nil {
 		fmt.Println("failed to init logs:", err)
 		return
 	}
 
 	// ingest
-	s, err := tokenize.IngestSentence(text)
+	s, err := ingest.IngestSentence(text)
 	if err != nil {
 		fmt.Println("ingest error:", err)
 		return
@@ -51,29 +57,19 @@ func main() {
 	defer cancel()
 
 	// start the background tokenizer which consumes IngestChan -> TokenizedChan
-	tokenize.StartTokenizer(ctx)
+	tokenize.StartTokenizer(context.Background()) // Remove timeout, use background context
+
+	// send sentence to tokenizer pipeline
+	ingest.IngestChan <- s
 
 	// wait for tokenization result for this sentence
 	var tokenized tokenize.Tokenized
-	select {
-	case t := <-tokenize.TokenizedChan:
-		// ensure we got the matching sentence (simple check)
-		if t.Sentence.ID != s.ID {
-			// if not matching, keep waiting for a short time for the expected one
-			// (in a real system you'd correlate by ID more robustly)
-			select {
-			case t2 := <-tokenize.TokenizedChan:
-				tokenized = t2
-			case <-time.After(2 * time.Second):
-				fmt.Println("timed out waiting for matching tokenized sentence")
-				return
-			}
-		} else {
+	for {
+		t := <-tokenize.TokenizedChan
+		if t.Sentence.ID == s.ID {
 			tokenized = t
+			break
 		}
-	case <-ctx.Done():
-		fmt.Println("timeout waiting for tokenization:", ctx.Err())
-		return
 	}
 
 	// merge verb+auxiliary tokens
@@ -90,12 +86,12 @@ func main() {
 	fmt.Println(string(tokOut))
 
 	// write tokens to logs/<id>_tokens.json
-	if err := tokenize.LogJSON("logs", s.ID+"_tokens", tokensOut); err != nil {
+	if err := logger.LogJSON("logs", s.ID+"_tokens", tokensOut); err != nil {
 		fmt.Println("failed to write token log:", err)
 	}
 
 	// dictionary lookup (new step)
-	dictEntries, err := dictionary.LookupDictionary(ctx, mergedTokens)
+	dictEntries, err := dictionary.LookupDictionary(context.Background(), mergedTokens)
 	if err != nil {
 		fmt.Println("dictionary lookup error:", err)
 		return
@@ -105,28 +101,55 @@ func main() {
 		mergedTokens[i].DictionaryEntry = dictEntries[i]
 	}
 
+	// DEBUG: Print all token surfaces after merging and before furigana update
+	fmt.Println("Merged token surfaces:")
+	for _, t := range mergedTokens {
+		fmt.Println(t.Text)
+	}
+
+	// DEBUG: Save all token surfaces after merging and before furigana update
+	f, err := os.Create("logs/merged_token_surfaces.log")
+	if err == nil {
+		for _, t := range mergedTokens {
+			f.WriteString(t.Text + "\n")
+		}
+		f.Close()
+	} else {
+		fmt.Println("Failed to write merged_token_surfaces.log:", err)
+	}
+
 	// update furigana using dictionary data for best accuracy
 	mergedTokens = tokenize.UpdateFuriganaFromDictionary(mergedTokens)
 
 	// log enriched tokens
-	if err := tokenize.LogJSON("logs", s.ID+"_enriched_tokens", mergedTokens); err != nil {
+	if err := logger.LogJSON("logs", s.ID+"_enriched_tokens", mergedTokens); err != nil {
 		fmt.Println("failed to write enriched token log:", err)
 	}
 
 	// log dictionary results
-	if err := tokenize.LogJSON("logs", s.ID+"_dict", dictEntries); err != nil {
+	if err := logger.LogJSON("logs", s.ID+"_dict", dictEntries); err != nil {
 		fmt.Println("failed to write dictionary log:", err)
 	}
 
-	// lookup (legacy, for analysis)
-	entries, err := tokenize.Lookup(ctx, mergedTokens)
+	// --- DICTIONARY LOOKUP & ANALYSIS ---
+	// Lookup: enrich tokens with dictionary entries
+	lexEntries, err := lookup.Lookup(ctx, mergedTokens)
 	if err != nil {
 		fmt.Println("lookup error:", err)
 		return
 	}
-
-	// analyze
-	analysis, err := tokenize.Analyze(ctx, tokenized.Sentence, entries)
+	// Attach dictionary entries to tokens
+	for i := range mergedTokens {
+		if i < len(lexEntries) {
+			mergedTokens[i].DictionaryEntry = model.DictionaryEntry{
+				Kanji:    []string{lexEntries[i].Token.Text},
+				Readings: lexEntries[i].Readings,
+				Glosses:  lexEntries[i].Definitions,
+				Source:   "lookup.go",
+			}
+		}
+	}
+	analysis, err := analyze.Analyze(context.Background(), s, lexEntries)
 	if err != nil {
 		fmt.Println("analyze error:", err)
 		return
@@ -139,14 +162,14 @@ func main() {
 		"tokens":      mergedTokens,
 		"analysis":    analysis,
 	}
-	if err := tokenize.LogJSON("logs", s.ID+"_merged", mergedOutput); err != nil {
+	if err := logger.LogJSON("logs", s.ID+"_merged", mergedOutput); err != nil {
 		fmt.Println("failed to write merged output log:", err)
 	}
 	out, _ := json.MarshalIndent(mergedOutput, "", "  ")
 	fmt.Println(string(out))
 
 	// write analysis to logs/<id>_analysis.json
-	if err := tokenize.LogJSON("logs", s.ID+"_analysis", analysis); err != nil {
+	if err := logger.LogJSON("logs", s.ID+"_analysis", analysis); err != nil {
 		fmt.Println("failed to write analysis log:", err)
 	}
 }

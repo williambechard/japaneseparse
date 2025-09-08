@@ -87,7 +87,7 @@ func InitKanjidic2(path string) error {
 	return err
 }
 
-// GetKanjiReadings returns readings for a kanji rune
+// GetKanjiReadings returns readings for a kanji rune, with logging
 func GetKanjiReadings(r rune) []string {
 	if kanjiReadingMap == nil {
 		log.Printf("kanjiReadingMap is nil when looking up %c", r)
@@ -98,6 +98,10 @@ func GetKanjiReadings(r rune) []string {
 		log.Printf("No readings found for kanji %c", r)
 	} else {
 		log.Printf("Readings for kanji %c: %v", r, readings)
+	}
+	// Extra: log all readings for all kanji for debugging
+	for k, v := range kanjiReadingMap {
+		log.Printf("KANJI MAP: %c => %v", k, v)
 	}
 	return readings
 }
