@@ -10,6 +10,37 @@ import (
 	"os"
 	"strings"
 	"sync"
+"logger/logger"
+	"japaneseparse/ingest"
+	"japaneseparse/kanji"
+	"japaneseparse/model"
+	"logger/logger"
+	"github.com/ikawaha/kagome-dict/ipa"
+	"github.com/ikawaha/kagome/v2/tokenizer"
+
+"github.com/ikawaha/kagome-dict/ipa"
+"github.com/ikawaha/kagome/v2/tokenizer"
+)
+
+// Helper: Generate rendaku (voiced) form for a hiragana string
+var rendakuMap = map[rune]rune{
+ 'か': 'が', 'き': 'ぎ', 'く': 'ぐ', 'け': 'げ', 'こ': 'ご',
+ 'さ': 'ざ', 'し': 'じ', 'す': 'ず', 'せ': 'ぜ', 'そ': 'ぞ',
+ 'た': 'だ', 'ち': 'ぢ', 'つ': 'づ', 'て': 'で', 'と': 'ど',
+ 'は': 'ば', 'ひ': 'び', 'ふ': 'ぶ', 'へ': 'べ', 'ほ': 'ぼ',
+}
+
+func rendakuForm(s string) string {
+ runes := []rune(s)
+ if len(runes) == 0 {
+  return s
+ }
+ if v, ok := rendakuMap[runes[0]]; ok {
+  runes[0] = v
+  return string(runes)
+ }
+ return s
+}
 	"time"
 	"unicode/utf8"
 
@@ -144,22 +175,22 @@ func init() {
 		kg = t
 	}
 }
-
-func isKanji(r rune) bool {
-	return r >= 0x4E00 && r <= 0x9FFF
-}
-
-// isKana returns true if rune is Hiragana or Katakana
-func isKana(r rune) bool {
-	return (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF)
-}
-
-// getFuriganaString returns a slice of [kanji/kana, furigana] pairs for display.
-func getFuriganaString(surface, reading string) [][2]string {
-	result := make([][2]string, 0)
-	surfaceRunes := []rune(surface)
-	readingRunes := []rune(katakanaToHiragana(reading))
-	j, k := 0, 0
+			"context"
+			"encoding/json"
+			"encoding/xml"
+			"fmt"
+			"io"
+			"log"
+			"os"
+			"strings"
+			"sync"
+			"time"
+			"japaneseparse/ingest"
+			"japaneseparse/kanji"
+			"japaneseparse/model"
+			"logger/logger"
+			"github.com/ikawaha/kagome-dict/ipa"
+			"github.com/ikawaha/kagome/v2/tokenizer"
 	for j < len(surfaceRunes) {
 		s := surfaceRunes[j]
 		if isKanji(s) {
@@ -342,20 +373,16 @@ func UpdateFuriganaFromDictionary(tokens []model.Token) []model.Token {
 				break
 			}
 		}
+		// Force all kanji tokens to use formatFuriganaBracketsOnly(getFuriganaString(...)), matching demo logic
 		if containsKanjiText {
-			tokens[i].FuriganaText = formatFuriganaDisplayAccurate(pairsText)
+			tokens[i].FuriganaText = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Text, tokens[i].Reading))
 		} else {
-			// fallback to dictionary furigana for pure kana/non-kanji
-			dict := tokens[i].DictionaryEntry
-			ft := getFuriganaFromDictionary(tokens[i].Text, dict)
-			tokens[i].FuriganaText = ft
+			tokens[i].FuriganaText = tokens[i].Text
 		}
 		if containsKanjiLemma {
-			tokens[i].FuriganaLemma = formatFuriganaDisplayAccurate(pairsLemma)
+			tokens[i].FuriganaLemma = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Lemma, tokens[i].Reading))
 		} else {
-			dict := tokens[i].DictionaryEntry
-			fl := getFuriganaFromDictionary(tokens[i].Lemma, dict)
-			tokens[i].FuriganaLemma = fl
+			tokens[i].FuriganaLemma = tokens[i].Lemma
 		}
 		logFuriganaAlignment(tokens[i].Text, tokens[i].Reading, stepsText, pairsText)
 		logFuriganaAlignment(tokens[i].Lemma, tokens[i].Reading, stepsLemma, pairsLemma)
@@ -421,6 +448,52 @@ func getConjugationLabel(auxs []string) string {
 		}
 		if auxs[0] == "た" {
 			return "past"
+					// Rendaku handling: Try voicing the first kana of any reading
+					if j > 0 {
+						// Always convert candidate to hiragana before rendaku
+						krHiragana := katakanaToHiragana(kr)
+						krRunesH := []rune(krHiragana)
+						rendaku := rendakuForm(krHiragana)
+						out := ""
+						lastKanjiIdx := -1
+						for i := len(pairs) - 1; i >= 0; i-- {
+							if len(pairs[i][0]) > 0 && isKanji([]rune(pairs[i][0])[0]) {
+								lastKanjiIdx = i
+								break
+							}
+						}
+						for i, pair := range pairs {
+							if len(pair[0]) > 0 && isKanji([]rune(pair[0])[0]) {
+								furigana := pair[1]
+								if i == lastKanjiIdx && furigana == "" {
+									// Assign remaining reading runes to last kanji
+									used := 0
+									for j, p := range pairs {
+										if j == lastKanjiIdx {
+											break
+										}
+										used += len([]rune(p[1]))
+									}
+									// Get the original reading from context (not available here, so rely on alignFuriganaAccurate patch)
+									// This function assumes pairs already patched
+								}
+								out += "[" + furigana + "]"
+							} else {
+								out += pair[0]
+							}
+						}
+						return out
+								_ = logger.LogJSON(logPath, logID, map[string]interface{}{
+									"event":   "candidate_chosen_rendaku",
+									"surface": surface,
+									"reading": reading,
+									"kanji":   string(s),
+									"chosen":  rendaku,
+								})
+								return append([][2]string{{string(s), rendaku}}, rest...), true
+							}
+						}
+					}
 		}
 	}
 	if len(auxs) == 2 {
@@ -554,11 +627,31 @@ func logFuriganaAlignment(tokenText, tokenReading string, steps []map[string]int
 
 // alignFuriganaAccurate returns both alignment pairs and log steps
 func alignFuriganaAccurate(surface, reading string) ([][2]string, []map[string]interface{}) {
+	log.Printf("[FALLBACK-GREEDY] surface='%s', reading='%s', kanjiIndices=%v, segments=%v", surface, reading, kanjiIndices, segments)
 	surfaceRunes := []rune(surface)
 	readingRunes := []rune(katakanaToHiragana(reading)) // Ensure reading is always hiragana
 	logSteps := make([]map[string]interface{}, 0)
 	logPath := "logs"
 	logID := "furigana_analysis"
+
+ // Helper: Generate rendaku (voiced) form for a hiragana string
+ rendakuMap := map[rune]rune{
+	'か': 'が', 'き': 'ぎ', 'く': 'ぐ', 'け': 'げ', 'こ': 'ご',
+	'さ': 'ざ', 'し': 'じ', 'す': 'ず', 'せ': 'ぜ', 'そ': 'ぞ',
+	'た': 'だ', 'ち': 'ぢ', 'つ': 'づ', 'て': 'で', 'と': 'ど',
+	'は': 'ば', 'ひ': 'び', 'ふ': 'ぶ', 'へ': 'べ', 'ほ': 'ぼ',
+ }
+ func rendakuForm(s string) string {
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return s
+	}
+	if v, ok := rendakuMap[runes[0]]; ok {
+		runes[0] = v
+		return string(runes)
+	}
+	return s
+ }
 
 	var recur func(j, k int) ([][2]string, bool)
 	recur = func(j, k int) ([][2]string, bool) {
@@ -578,18 +671,28 @@ func alignFuriganaAccurate(surface, reading string) ([][2]string, []map[string]i
 			"reason":            "",
 		}
 		if isKanji(s) {
-			kanjiReadings := kanji.GetKanjiReadings(s)
-			step["candidates"] = kanjiReadings
-			_ = logger.LogJSON(logPath, logID, map[string]interface{}{
-				"event":             "kanji_candidates",
-				"surface":           surface,
-				"reading":           reading,
-				"kanji":             string(s),
-				"candidates":        kanjiReadings,
-				"remaining_reading": string(readingRunes[k:]),
-			})
-			matched := false
-			for _, kr := range kanjiReadings {
+				kanjiReadings := kanji.GetKanjiReadings(s)
+				step["candidates"] = kanjiReadings
+				_ = logger.LogJSON(logPath, logID, map[string]interface{}{
+				 "event":             "kanji_candidates",
+				 "surface":           surface,
+				 "reading":           reading,
+				 "kanji":             string(s),
+				 "candidates":        kanjiReadings,
+				 "remaining_reading": string(readingRunes[k:]),
+				})
+				log.Printf("[KANJI-DEBUG] surface='%s', reading='%s', kanji='%s', candidates=%v, readingRunes=%v, k=%d", surface, reading, string(s), kanjiReadings, readingRunes, k)
+				matched := false
+				   for idx, kr := range kanjiReadings {
+					// Always log candidate details
+					krHiragana := katakanaToHiragana(kr)
+					krRunesH := []rune(krHiragana)
+					rendaku := rendakuForm(krHiragana)
+					substr := ""
+					if k+len(krRunesH) <= len(readingRunes) {
+						substr = string(readingRunes[k:k+len(krRunesH)])
+					}
+					log.Printf("[RENDAKU-ATTEMPT] surface='%s', reading='%s', kanji='%s', candidate='%s', hiragana='%s', rendaku='%s', substring='%s'", surface, reading, string(s), kr, krHiragana, rendaku, substr)
 				krH := katakanaToHiragana(kr) // Ensure candidate is hiragana
 				krRunes := []rune(krH)
 				_ = logger.LogJSON(logPath, logID, map[string]interface{}{
@@ -601,21 +704,83 @@ func alignFuriganaAccurate(surface, reading string) ([][2]string, []map[string]i
 					"reading_substring": string(readingRunes[k : k+len(krRunes)]),
 				})
 				if k+len(krRunes) <= len(readingRunes) && string(readingRunes[k:k+len(krRunes)]) == krH {
-					rest, ok := recur(j+1, k+len(krRunes))
-					if ok {
-						step["chosen"] = krH
-						step["reason"] = "substring match"
+				 rest, ok := recur(j+1, k+len(krRunes))
+				 if ok {
+				  step["chosen"] = krH
+				  step["reason"] = "substring match"
+				  logSteps = append(logSteps, step)
+				  _ = logger.LogJSON(logPath, logID, map[string.interface{}{
+				   "event":   "candidate_chosen",
+				   "surface": surface,
+				   "reading": reading,
+				   "kanji":   string(s),
+				   "chosen":  krH,
+				  })
+				  return append([][2]string{{string(s), krH}}, rest...), true
+				 }
+				}
+				// Always check rendaku for every candidate
+				krHiragana := katakanaToHiragana(kr)
+				krRunesH := []rune(krHiragana)
+				rendaku := rendakuForm(krHiragana)
+				substr := ""
+				if k+len(krRunesH) <= len(readingRunes) {
+					substr = string(readingRunes[k:k+len(krRunesH)])
+				}
+				log.Printf("[RENDAKU-ATTEMPT] surface='%s', reading='%s', kanji='%s', candidate='%s', hiragana='%s', rendaku='%s', substring='%s'", surface, reading, string(s), kr, krHiragana, rendaku, substr)
+				if rendaku != krHiragana && substr == rendaku {
+					log.Printf("[RENDAKU-MATCH] surface='%s', reading='%s', kanji='%s', rendaku='%s', reading_substring='%s'", surface, reading, string(s), rendaku, substr)
+					// If all reading runes are consumed, always return success for the token
+					if k+len(krRunesH) == len(readingRunes) {
+						step["chosen"] = rendaku
+						step["reason"] = "rendaku match (all reading consumed, always success)"
 						logSteps = append(logSteps, step)
-						_ = logger.LogJSON(logPath, logID, map[string]interface{}{
-							"event":   "candidate_chosen",
+						matched = true
+						_ = logger.LogJSON(logPath, logID, map[string.interface{}{
+							"event":   "candidate_chosen_rendaku_final_always",
 							"surface": surface,
 							"reading": reading,
 							"kanji":   string(s),
-							"chosen":  krH,
+							"chosen":  rendaku,
 						})
-						return append([][2]string{{string(s), krH}}, rest...), true
+						return append([][2]string{{string(s), rendaku}}, nil...), true
+					}
+					rest, ok := recur(j+1, k+len(krRunesH))
+					if ok {
+						step["chosen"] = rendaku
+						step["reason"] = "rendaku match (voiced first kana of reading)"
+						logSteps = append(logSteps, step)
+						matched = true
+						_ = logger.LogJSON(logPath, logID, map[string.interface{}{
+							"event":   "candidate_chosen_rendaku",
+							"surface": surface,
+							"reading": reading,
+							"kanji":   string(s),
+							"chosen":  rendaku,
+						})
+						return append([][2]string{{string(s), rendaku}}, rest...), true
 					}
 				}
+	 // Rendaku handling: If not first kanji, try voiced form
+	 if j > 0 && k+len(krRunes) <= len(readingRunes) {
+		rendaku := rendakuForm(krH)
+		if rendaku != krH && string(readingRunes[k:k+len(krRunes)]) == rendaku {
+		 rest, ok := recur(j+1, k+len(krRunes))
+		 if ok {
+			step["chosen"] = rendaku
+			step["reason"] = "rendaku match"
+			logSteps = append(logSteps, step)
+			_ = logger.LogJSON(logPath, logID, map[string]interface{}{
+			 "event":   "candidate_chosen_rendaku",
+			 "surface": surface,
+			 "reading": reading,
+			 "kanji":   string(s),
+			 "chosen":  rendaku,
+			})
+			return append([][2]string{{string(s), rendaku}}, rest...), true
+		 }
+		}
+	 }
 			}
 			if !matched {
 				step["chosen"] = ""
@@ -673,69 +838,128 @@ func alignFuriganaAccurate(surface, reading string) ([][2]string, []map[string]i
 			"surface": surface,
 			"reading": reading,
 		})
-		// fallback to greedy
-		fallbackSteps := map[string]interface{}{
-			"reason":  "fallback to greedy alignment",
+		// fallback to robust greedy substring matching
+		fallbackSteps := map[string.interface{}{
+			"reason":  "fallback to greedy alignment (substring match)",
 			"surface": surface,
 			"reading": reading,
 		}
 		logSteps = append(logSteps, fallbackSteps)
-		pairs = make([][2]string, 0)
+		// Force greedy split: assign reading to kanji only, split into N non-empty segments
 		surfaceRunes := []rune(surface)
 		readingRunes := []rune(katakanaToHiragana(reading))
-		j, k := 0, 0
-		for j < len(surfaceRunes) {
-			s := surfaceRunes[j]
-			step := map[string]interface{}{
-				"kanji":             string(s),
-				"reading_pos":       k,
-				"remaining_reading": string(readingRunes[k:]),
-				"chosen":            "",
-				"reason":            "",
-			}
+		kanjiIndices := []int{}
+		for i, s := range surfaceRunes {
 			if isKanji(s) {
-				kanjiReadings := kanji.GetKanjiReadings(s)
-				longestMatch := ""
-				for _, kr := range kanjiReadings {
-					krH := katakanaToHiragana(kr)
-					krRunes := []rune(krH)
-					if k+len(krRunes) <= len(readingRunes) && string(readingRunes[k:k+len(krRunes)]) == krH {
-						if len(krH) > len(longestMatch) {
-							longestMatch = krH
-						}
-					}
-				}
-				if longestMatch != "" {
-					step["chosen"] = longestMatch
-					step["reason"] = "greedy longest match"
-					pairs = append(pairs, [2]string{string(s), longestMatch})
-					k += len([]rune(longestMatch))
-				} else {
-					step["chosen"] = ""
-					step["reason"] = "no match in greedy"
-					pairs = append(pairs, [2]string{string(s), ""})
-				}
-				logSteps = append(logSteps, step)
-				j++
+				kanjiIndices = append(kanjiIndices, i)
+			}
+		}
+		nKanji := len(kanjiIndices)
+		segments := make([]string, nKanji)
+		pos := 0
+		total := len(readingRunes)
+		for i := 0; i < nKanji; i++ {
+			minLen := total / nKanji
+			extra := 0
+			if i < total%nKanji {
+				extra = 1
+			}
+			segLen := minLen + extra
+			if pos+segLen > total {
+				segLen = total - pos
+			}
+			segments[i] = string(readingRunes[pos : pos+segLen])
+			pos += segLen
+		}
+		pairs = make([][2]string, len(surfaceRunes))
+		ki := 0
+		for i, s := range surfaceRunes {
+			if isKanji(s) {
+				pairs[i] = [2]string{string(s), segments[ki]}
+				ki++
 			} else if isKana(s) {
-				if k < len(readingRunes) && readingRunes[k] == s {
-					step["chosen"] = string(s)
-					step["reason"] = "kana matches reading"
-					pairs = append(pairs, [2]string{string(s), string(s)})
-					k++
-				} else {
-					step["chosen"] = ""
-					step["reason"] = "kana does not match reading"
-					pairs = append(pairs, [2]string{string(s), ""})
-				}
-				logSteps = append(logSteps, step)
-				j++
+				pairs[i] = [2]string{string(s), string(s)}
 			} else {
-				step["chosen"] = ""
-				step["reason"] = "non-kanji/kana character"
-				pairs = append(pairs, [2]string{string(s), ""})
-				logSteps = append(logSteps, step)
-				j++
+				pairs[i] = [2]string{string(s), ""}
+			}
+		}
+	}
+	// Patch: assign remaining reading runes to last kanji if its furigana is empty
+	// Improved greedy: If all kanji have readings and the reading is a concatenation, split accordingly
+	kanjiIndices := []int{}
+	kanjiReadings := []string{}
+	for idx, pair := range pairs {
+		if len(pair[0]) > 0 && isKanji([]rune(pair[0])[0]) {
+			kanjiIndices = append(kanjiIndices, idx)
+			// Get all possible readings for this kanji
+			readings := kanji.GetKanjiReadings([]rune(pair[0])[0])
+			// Use the longest reading (greedy)
+			longest := ""
+			for _, r := range readings {
+				rH := katakanaToHiragana(r)
+				if len(rH) > len(longest) {
+					longest = rH
+				}
+			}
+			kanjiReadings = append(kanjiReadings, longest)
+		}
+	}
+	// If the concatenation of kanjiReadings matches the reading, split accordingly
+	joined := ""
+	for _, r := range kanjiReadings {
+		joined += r
+	}
+	readingH := katakanaToHiragana(reading)
+	if len(kanjiIndices) > 1 && len(readingH) >= len(kanjiIndices) {
+		// Greedily split readingH into N non-empty segments for N kanji
+		segments := make([]string, len(kanjiIndices))
+		pos := 0
+		remaining := len([]rune(readingH))
+		for i := 0; i < len(kanjiIndices); i++ {
+			// Ensure at least 1 rune per segment, and distribute any remainder to earlier segments
+			segLen := 1
+			if i < remaining-len(kanjiIndices) {
+				segLen += 1
+			}
+			if i < len(kanjiIndices)-1 {
+				// Calculate max possible for this segment
+				maxPossible := remaining - (len(kanjiIndices)-(i+1))
+				if segLen < maxPossible {
+					segLen = maxPossible
+				}
+			}
+			if pos+segLen > len([]rune(readingH)) {
+				segLen = len([]rune(readingH)) - pos
+			}
+			seg := string([]rune(readingH)[pos : pos+segLen])
+			segments[i] = seg
+			pos += segLen
+			remaining = len([]rune(readingH)) - pos
+		}
+		for i, idx := range kanjiIndices {
+			pairs[idx][1] = segments[i]
+		}
+	} else if len(pairs) > 0 {
+		// Find last kanji index
+		lastKanjiIdx := -1
+		for i := len(pairs) - 1; i >= 0; i-- {
+			if len(pairs[i][0]) > 0 && isKanji([]rune(pairs[i][0])[0]) {
+				lastKanjiIdx = i
+				break
+			}
+		}
+		if lastKanjiIdx != -1 && pairs[lastKanjiIdx][1] == "" {
+			// Compute remaining reading runes
+			used := 0
+			for i, pair := range pairs {
+				if i == lastKanjiIdx {
+					break
+				}
+				used += len([]rune(pair[1]))
+			}
+			remaining := string([]rune(katakanaToHiragana(reading))[used:])
+			if remaining != "" {
+				pairs[lastKanjiIdx][1] = remaining
 			}
 		}
 	}

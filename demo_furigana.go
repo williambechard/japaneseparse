@@ -1,22 +1,13 @@
 package main
 
 import (
-	"encoding/xml"
 	"fmt"
-	"os"
-	"unicode/utf8"
+	"japaneseparse/kanji"
+	"strings"
 )
 
-type Kanjidic2Kanji struct {
-	Literal        string `xml:"literal"`
-	ReadingMeaning struct {
-		RMGroup []struct {
-			Reading []struct {
-				Value string `xml:",chardata"`
-				Type  string `xml:"r_type,attr"`
-			} `xml:"reading"`
-		} `xml:"rmgroup"`
-	} `xml:"reading_meaning"`
+func isKanji(r rune) bool {
+	return r >= 0x4E00 && r <= 0x9FFF
 }
 
 func katakanaToHiragana(s string) string {
@@ -29,67 +20,94 @@ func katakanaToHiragana(s string) string {
 	return string(runes)
 }
 
-func main() {
-	kanjiReadingMap := make(map[rune][]string)
-	f, err := os.Open("dict/kanjidic2.xml")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	d := xml.NewDecoder(f)
-	for {
-		tok, tokenErr := d.Token()
-		if tokenErr != nil {
-			break
-		}
-		switch se := tok.(type) {
-		case xml.StartElement:
-			if se.Name.Local == "character" {
-				var k Kanjidic2Kanji
-				if decodeErr := d.DecodeElement(&k, &se); decodeErr != nil {
-					continue
-				}
-				if utf8.RuneCountInString(k.Literal) != 1 {
-					continue
-				}
-				var readings []string
-				for _, group := range k.ReadingMeaning.RMGroup {
-					for _, r := range group.Reading {
-						if r.Type == "ja_on" || r.Type == "ja_kun" {
-							readings = append(readings, r.Value)
-						}
-					}
-				}
-				kanjiRune, _ := utf8.DecodeRuneInString(k.Literal)
-				kanjiReadingMap[kanjiRune] = readings
-			}
-		}
-	}
-
-	surface := "秋田"
-	reading := "アキタ"
+// alignFuriganaDemo: robust furigana alignment for demo
+func alignFuriganaDemo(surface, reading string) string {
+	fmt.Printf("[DEBUG] alignFuriganaDemo called with surface='%s', reading='%s'\n", surface, reading)
 	surfaceRunes := []rune(surface)
 	readingRunes := []rune(katakanaToHiragana(reading))
+	fmt.Printf("[DEBUG] surfaceRunes: %v\n", surfaceRunes)
+	fmt.Printf("[DEBUG] readingRunes: %v\n", readingRunes)
 	j, k := 0, 0
-	fmt.Printf("Furigana for '%s' (reading '%s'):\n", surface, reading)
+	out := ""
 	for j < len(surfaceRunes) {
 		s := surfaceRunes[j]
-		if rds, ok := kanjiReadingMap[s]; ok {
-			found := ""
-			for _, kr := range rds {
-				krH := katakanaToHiragana(kr)
-				krRunes := []rune(krH)
-				if k+len(krRunes) <= len(readingRunes) && string(readingRunes[k:k+len(krRunes)]) == krH {
-					found = krH
-					k += len(krRunes)
-					break
+		fmt.Printf("[DEBUG] surface[%d]='%c'\n", j, s)
+		if isKanji(s) {
+			readings := kanji.GetKanjiReadings(s)
+			fmt.Printf("[DEBUG] Kanji '%c' readings: %v\n", s, readings)
+			bestMatch := ""
+			bestLen := 0
+			// Try to match the longest possible reading for this kanji
+			for _, kr := range readings {
+				krBase := katakanaToHiragana(kr)
+				if j > 0 && strings.Contains(kr, ".") {
+					krBase = katakanaToHiragana(strings.SplitN(kr, ".", 2)[0])
+					fmt.Printf("[DEBUG] Dot found in reading '%s', using base '%s'\n", kr, krBase)
+				}
+				krRunes := []rune(krBase)
+				krLen := len(krRunes)
+				// Greedily match the longest substring
+				for l := krLen; l > 0; l-- {
+					if k+l <= len(readingRunes) && string(readingRunes[k:k+l]) == string(krRunes[:l]) {
+						if l > bestLen {
+							bestMatch = string(krRunes[:l])
+							bestLen = l
+						}
+						break
+					}
 				}
 			}
-			fmt.Printf("[%c|%s]", s, found)
+			if bestMatch != "" {
+				out += "[" + bestMatch + "]"
+				k += bestLen
+				fmt.Printf("[DEBUG] Furigana for '%c': '%s'\n", s, bestMatch)
+			} else {
+				// If this is the last kanji and there are remaining reading runes, assign them as furigana
+				isLastKanji := true
+				for jj := j + 1; jj < len(surfaceRunes); jj++ {
+					if isKanji(surfaceRunes[jj]) {
+						isLastKanji = false
+						break
+					}
+				}
+				if isLastKanji && k < len(readingRunes) {
+					out += "[" + string(readingRunes[k:]) + "]"
+					fmt.Printf("[DEBUG] Furigana for last kanji '%c': '%s'\n", s, string(readingRunes[k:]))
+					k = len(readingRunes)
+				} else {
+					out += "[]"
+					fmt.Printf("[DEBUG] No furigana found for '%c'\n", s)
+				}
+			}
+			j++
 		} else {
-			fmt.Printf("[%c|]", s)
+			out += string(s)
+			if k < len(readingRunes) && readingRunes[k] == s {
+				k++
+			}
+			j++
 		}
-		j++
 	}
-	fmt.Println()
+	if k < len(readingRunes) {
+		out += string(readingRunes[k:])
+		fmt.Printf("[DEBUG] Remaining readingRunes: '%s'\n", string(readingRunes[k:]))
+	}
+	fmt.Printf("[DEBUG] Final output: %s\n", out)
+	return out
+}
+
+func main() {
+	kanji.InitKanjidic2("dict/kanjidic2.xml")
+	fmt.Println("--- Furigana Demo: 入見内川 ---")
+
+	surface := "入見内川"
+	reading := "イリミナイカワ"
+	expected := "[いり][み][ない][かわ]"
+	output := alignFuriganaDemo(surface, reading)
+	fmt.Printf("Surface: %s\nReading: %s\nOutput: %s\nExpected: %s\n", surface, reading, output, expected)
+	if output != expected {
+		fmt.Println("❌ Furigana alignment does NOT match expected output!")
+	} else {
+		fmt.Println("✅ Furigana alignment matches expected output.")
+	}
 }

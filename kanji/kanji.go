@@ -98,11 +98,18 @@ func GetKanjiReadings(r rune) []string {
 		log.Printf("No readings found for kanji %c", r)
 	} else {
 		log.Printf("Readings for kanji %c: %v", r, readings)
+		// Log each reading and its runes for debugging dot/character issues
+		for _, reading := range readings {
+			log.Printf("Reading for %c: '%s' (runes: %v)", r, reading, []rune(reading))
+			for i, rr := range reading {
+				log.Printf("  rune[%d]: '%c' (U+%04X)", i, rr, rr)
+			}
+		}
 	}
 	// Extra: log all readings for all kanji for debugging
-	for k, v := range kanjiReadingMap {
-		log.Printf("KANJI MAP: %c => %v", k, v)
-	}
+	//for k, v := range kanjiReadingMap {
+	//	log.Printf("KANJI MAP: %c => %v", k, v)
+	//}
 	return readings
 }
 

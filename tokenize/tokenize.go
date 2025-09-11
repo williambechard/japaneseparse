@@ -132,7 +132,7 @@ func GetKanjiReadings(r rune) []string {
 	}
 	readings := kanjiReadingMap[r]
 	if readings == nil {
-		log.Printf("No readings found for kanji %c", r, readings)
+		log.Printf("No readings found for kanji %c", r)
 	} else {
 		log.Printf("Readings for kanji %c: %v", r, readings)
 	}
@@ -162,25 +162,66 @@ func getFuriganaString(surface, reading string) [][2]string {
 	result := make([][2]string, 0)
 	surfaceRunes := []rune(surface)
 	readingRunes := []rune(katakanaToHiragana(reading))
-	j, k := 0, 0
-	for j < len(surfaceRunes) {
+	k := 0
+	for j := 0; j < len(surfaceRunes); j++ {
 		s := surfaceRunes[j]
 		if isKanji(s) {
-			// Greedily match reading for this kanji
-			startK := k
-			for k < len(readingRunes) && (j+1 == len(surfaceRunes) || !isKana(surfaceRunes[j+1]) || readingRunes[k] != surfaceRunes[j+1]) {
+			// Try to find the best reading for this kanji from kanjidic2
+			bestMatch := ""
+			bestLen := 0
+			kanjiReadings := kanji.GetKanjiReadings(s)
+			for _, kr := range kanjiReadings {
+				krH := katakanaToHiragana(kr)
+				krBase := krH
+				if strings.Contains(kr, ".") {
+					krBase = katakanaToHiragana(strings.SplitN(kr, ".", 2)[0])
+				}
+				krLen := len([]rune(krBase))
+				if k+krLen <= len(readingRunes) && string(readingRunes[k:k+krLen]) == krBase {
+					if krLen > bestLen {
+						bestMatch = krBase
+						bestLen = krLen
+					}
+				}
+			}
+			if bestMatch != "" {
+				result = append(result, [2]string{string(s), bestMatch})
+				k += bestLen
+			} else {
+				// If no match, assign remaining reading to last kanji if it's the last kanji
+				isLastKanji := true
+				for jj := j + 1; jj < len(surfaceRunes); jj++ {
+					if isKanji(surfaceRunes[jj]) {
+						isLastKanji = false
+						break
+					}
+				}
+				if isLastKanji && k < len(readingRunes) {
+					result = append(result, [2]string{string(s), string(readingRunes[k:])})
+					k = len(readingRunes)
+				} else {
+					result = append(result, [2]string{string(s), ""})
+				}
+			}
+		} else if isKana(s) {
+			result = append(result, [2]string{string(s), ""})
+			if k < len(readingRunes) && readingRunes[k] == s {
 				k++
 			}
-			result = append(result, [2]string{string(s), string(readingRunes[startK:k])})
-			j++
-		} else if isKana(s) {
-			result = append(result, [2]string{string(s), string(s)})
-			j++
-			k++
 		} else {
 			result = append(result, [2]string{string(s), ""})
-			j++
 		}
+	}
+	// If there is leftover reading and no kanji left, append as plain text
+	kanjiLeft := false
+	for jj := len(surfaceRunes) - 1; jj >= 0; jj-- {
+		if isKanji(surfaceRunes[jj]) {
+			kanjiLeft = true
+			break
+		}
+	}
+	if !kanjiLeft && k < len(readingRunes) {
+		result = append(result, [2]string{"", string(readingRunes[k:])})
 	}
 	return result
 }
@@ -203,6 +244,44 @@ func formatFuriganaDisplay(pairs [][2]string) string {
 		if pair[1] != "" {
 			out += "[" + pair[0] + "|" + pair[1] + "]"
 		} else {
+			out += pair[0]
+		}
+	}
+	return out
+}
+
+// formatFuriganaBracketsOnly formats furigana so only kanji readings are in brackets, with non-kanji characters outside.
+func formatFuriganaBracketsOnly(pairs [][2]string) string {
+	out := ""
+	lastKanjiIdx := -1
+	for i, pair := range pairs {
+		if len(pair[0]) > 0 && isKanji([]rune(pair[0])[0]) {
+			lastKanjiIdx = i
+		}
+	}
+	// Assign remaining reading runes to last kanji if its furigana is empty
+	if lastKanjiIdx != -1 && pairs[lastKanjiIdx][1] == "" {
+		// Compute used reading runes
+		used := 0
+		for i, pair := range pairs {
+			if i == lastKanjiIdx {
+				break
+			}
+			used += len([]rune(pair[1]))
+		}
+		// Get remaining reading from context (not available here, so rely on getFuriganaString patch)
+		// For now, leave as is, since getFuriganaString should assign correctly
+	}
+	for _, pair := range pairs {
+		if len(pair[0]) == 0 {
+			continue // skip empty surface segments
+		}
+		if isKanji([]rune(pair[0])[0]) {
+			// Always output a bracketed block for every kanji, even if furigana is empty
+			out += "[" + pair[1] + "]"
+		} else if isKana([]rune(pair[0])[0]) {
+			out += pair[0]
+		} else if pair[0] != "" {
 			out += pair[0]
 		}
 	}
@@ -316,8 +395,8 @@ func convertKagomeTokens(ktoks []tokenizer.Token) []Token {
 			TokenID:        tokenID,
 			InflectionType: infType,
 			InflectionForm: infForm,
-			FuriganaText:   formatFuriganaDisplay(getFuriganaString(kt.Surface, reading)),
-			FuriganaLemma:  formatFuriganaDisplay(getFuriganaString(lemma, reading)),
+			FuriganaText:   formatFuriganaBracketsOnly(getFuriganaString(kt.Surface, reading)),
+			FuriganaLemma:  formatFuriganaBracketsOnly(getFuriganaString(lemma, reading)),
 		}
 		out = append(out, t)
 	}
@@ -328,32 +407,29 @@ func convertKagomeTokens(ktoks []tokenizer.Token) []Token {
 func UpdateFuriganaFromDictionary(tokens []Token) []Token {
 	for i := range tokens {
 		containsKanjiText := false
-		for _, r := range []rune(tokens[i].Text) {
+		for _, r := range tokens[i].Text {
 			if isKanji(r) {
 				containsKanjiText = true
 				break
 			}
 		}
 		containsKanjiLemma := false
-		for _, r := range []rune(tokens[i].Lemma) {
+		for _, r := range tokens[i].Lemma {
 			if isKanji(r) {
 				containsKanjiLemma = true
 				break
 			}
 		}
+		// Restore previous logic: use getFuriganaString for all tokens
 		if containsKanjiText {
-			tokens[i].FuriganaText = formatFuriganaDisplayAccurate(alignFuriganaAccurate(tokens[i].Text, tokens[i].Reading))
+			tokens[i].FuriganaText = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Text, tokens[i].Reading))
 		} else {
-			dict := tokens[i].DictionaryEntry
-			ft := getFuriganaFromDictionary(tokens[i].Text, dict)
-			tokens[i].FuriganaText = ft
+			tokens[i].FuriganaText = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Text, tokens[i].Reading))
 		}
 		if containsKanjiLemma {
-			tokens[i].FuriganaLemma = formatFuriganaDisplayAccurate(alignFuriganaAccurate(tokens[i].Lemma, tokens[i].Reading))
+			tokens[i].FuriganaLemma = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Lemma, tokens[i].Reading))
 		} else {
-			dict := tokens[i].DictionaryEntry
-			fl := getFuriganaFromDictionary(tokens[i].Lemma, dict)
-			tokens[i].FuriganaLemma = fl
+			tokens[i].FuriganaLemma = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Lemma, tokens[i].Reading))
 		}
 	}
 	return tokens
@@ -540,95 +616,83 @@ func logFuriganaAlignment(tokenText, tokenReading string, steps []map[string]int
 func alignFuriganaAccurate(surface, reading string) [][2]string {
 	surfaceRunes := []rune(surface)
 	readingRunes := []rune(katakanaToHiragana(reading))
-	var recur func(j, k int) ([][2]string, bool)
-	recur = func(j, k int) ([][2]string, bool) {
-		if j >= len(surfaceRunes) {
-			if k == len(readingRunes) {
-				return make([][2]string, 0), true
-			}
-			return nil, false
-		}
+	var result [][2]string
+	j, k := 0, 0
+	for j < len(surfaceRunes) {
 		s := surfaceRunes[j]
 		if isKanji(s) {
+			// Find the best matching reading for this kanji
+			bestMatch := ""
+			bestLen := 0
 			kanjiReadings := kanji.GetKanjiReadings(s)
 			for _, kr := range kanjiReadings {
 				krH := katakanaToHiragana(kr)
-				krRunes := []rune(krH)
-				if k+len(krRunes) <= len(readingRunes) && string(readingRunes[k:k+len(krRunes)]) == krH {
-					rest, ok := recur(j+1, k+len(krRunes))
-					if ok {
-						return append([][2]string{{string(s), krH}}, rest...), true
+				krBase := krH
+				if strings.Contains(kr, ".") {
+					krBase = katakanaToHiragana(strings.SplitN(kr, ".", 2)[0])
+				}
+				krLen := len([]rune(krBase))
+				if k+krLen <= len(readingRunes) && string(readingRunes[k:k+krLen]) == krBase {
+					if krLen > bestLen {
+						bestMatch = krBase
+						bestLen = krLen
 					}
 				}
 			}
-			return append([][2]string{{string(s), ""}}, nil...), false
+			if bestMatch != "" {
+				result = append(result, [2]string{"", bestMatch})
+				k += bestLen
+			} else {
+				// No match: if this is the last kanji and there are remaining reading runes, assign them as furigana (rendaku fix)
+				isLastKanji := true
+				for jj := j + 1; jj < len(surfaceRunes); jj++ {
+					if isKanji(surfaceRunes[jj]) {
+						isLastKanji = false
+						break
+					}
+				}
+				if isLastKanji && k < len(readingRunes) {
+					result = append(result, [2]string{string(s), string(readingRunes[k:])})
+					k = len(readingRunes)
+				} else {
+					result = append(result, [2]string{string(s), ""})
+				}
+			}
+			j++
 		} else if isKana(s) {
 			if k < len(readingRunes) && readingRunes[k] == s {
-				rest, ok := recur(j+1, k+1)
-				if ok {
-					return append([][2]string{{string(s), string(s)}}, rest...), true
-				}
+				result = append(result, [2]string{string(s), ""})
+				k++
 			} else {
-				rest, ok := recur(j+1, k)
-				if ok {
-					return append([][2]string{{string(s), ""}}, rest...), true
-				}
+				result = append(result, [2]string{string(s), ""})
 			}
-			return nil, false
+			j++
 		} else {
-			rest, ok := recur(j+1, k)
-			if ok {
-				return append([][2]string{{string(s), ""}}, rest...), true
-			}
-			return nil, false
-		}
-	}
-	pairs, ok := recur(0, 0)
-	if !ok {
-		pairs = make([][2]string, 0)
-		surfaceRunes := []rune(surface)
-		readingRunes := []rune(katakanaToHiragana(reading))
-		j, k := 0, 0
-		for j < len(surfaceRunes) {
-			s := surfaceRunes[j]
-			if isKanji(s) {
-				kanjiReadings := kanji.GetKanjiReadings(s)
-				longestMatch := ""
-				for _, kr := range kanjiReadings {
-					krH := katakanaToHiragana(kr)
-					krRunes := []rune(krH)
-					if k+len(krRunes) <= len(readingRunes) && string(readingRunes[k:k+len(krRunes)]) == krH {
-						if len(krH) > len(longestMatch) {
-							longestMatch = krH
-						}
-					}
-				}
-				if longestMatch != "" {
-					pairs = append(pairs, [2]string{string(s), longestMatch})
-					k += len([]rune(longestMatch))
-				} else {
-					pairs = append(pairs, [2]string{string(s), ""})
-				}
-			} else if isKana(s) {
-				if k < len(readingRunes) && readingRunes[k] == s {
-					pairs = append(pairs, [2]string{string(s), string(s)})
-					k++
-				} else {
-					pairs = append(pairs, [2]string{string(s), ""})
-				}
-			} else {
-				pairs = append(pairs, [2]string{string(s), ""})
-			}
+			result = append(result, [2]string{string(s), ""})
 			j++
 		}
 	}
-	return pairs
+	// Only append remaining reading if there are no kanji left in surface
+	kanjiLeft := false
+	for jj := j; jj < len(surfaceRunes); jj++ {
+		if isKanji(surfaceRunes[jj]) {
+			kanjiLeft = true
+			break
+		}
+	}
+	if !kanjiLeft && k < len(readingRunes) {
+		result = append(result, [2]string{"", string(readingRunes[k:])})
+	}
+	return result
 }
 
 // formatFuriganaDisplayAccurate formats furigana so only kanji get [kanji|furigana], kana are plain
 func formatFuriganaDisplayAccurate(pairs [][2]string) string {
 	out := ""
 	for _, pair := range pairs {
+		if len(pair[0]) == 0 {
+			continue // skip empty surface segments to avoid index out of range
+		}
 		if isKanji([]rune(pair[0])[0]) && pair[1] != "" {
 			out += "[" + pair[0] + "|" + pair[1] + "]"
 		} else {

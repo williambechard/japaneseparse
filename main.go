@@ -149,6 +149,9 @@ func main() {
 			}
 		}
 	}
+	// update furigana again after lookup enrichment
+	mergedTokens = tokenize.UpdateFuriganaFromDictionary(mergedTokens)
+
 	analysis, err := analyze.Analyze(context.Background(), s, lexEntries)
 	if err != nil {
 		fmt.Println("analyze error:", err)
