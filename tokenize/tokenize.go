@@ -157,6 +157,8 @@ func isKana(r rune) bool {
 	return (r >= 0x3040 && r <= 0x309F) || (r >= 0x30A0 && r <= 0x30FF)
 }
 
+// rendaku helpers are provided by package kanji
+
 // getFuriganaString returns a slice of [kanji/kana, furigana] pairs for display.
 func getFuriganaString(surface, reading string) [][2]string {
 	result := make([][2]string, 0)
@@ -166,21 +168,69 @@ func getFuriganaString(surface, reading string) [][2]string {
 	for j := 0; j < len(surfaceRunes); j++ {
 		s := surfaceRunes[j]
 		if isKanji(s) {
-			// Try to find the best reading for this kanji from kanjidic2
+			// Greedy longest-match per kanji using kanjidic2 readings with normalized variants and rendaku
 			bestMatch := ""
 			bestLen := 0
 			kanjiReadings := kanji.GetKanjiReadings(s)
 			for _, kr := range kanjiReadings {
-				krH := katakanaToHiragana(kr)
-				krBase := krH
-				if strings.Contains(kr, ".") {
-					krBase = katakanaToHiragana(strings.SplitN(kr, ".", 2)[0])
+				// generate normalized variants: full, prefix before '.', and without leading '-'
+				full := kanji.NormalizeReading(kr)
+				variants := []string{}
+				if full != "" {
+					variants = append(variants, full)
 				}
-				krLen := len([]rune(krBase))
-				if k+krLen <= len(readingRunes) && string(readingRunes[k:k+krLen]) == krBase {
-					if krLen > bestLen {
-						bestMatch = krBase
-						bestLen = krLen
+				if idx := strings.IndexRune(kr, '.'); idx >= 0 {
+					pre := kr[:idx]
+					preNorm := kanji.NormalizeReading(pre)
+					if preNorm != "" {
+						// avoid duplicates
+						found := false
+						for _, v := range variants {
+							if v == preNorm {
+								found = true
+								break
+							}
+						}
+						if !found {
+							variants = append(variants, preNorm)
+						}
+					}
+				}
+				if strings.HasPrefix(kr, "-") {
+					noLead := kanji.NormalizeReading(strings.TrimPrefix(kr, "-"))
+					if noLead != "" {
+						found := false
+						for _, v := range variants {
+							if v == noLead {
+								found = true
+								break
+							}
+						}
+						if !found {
+							variants = append(variants, noLead)
+						}
+					}
+				}
+
+				for _, v := range variants {
+					vRunes := []rune(v)
+					// normal match
+					if k+len(vRunes) <= len(readingRunes) && string(readingRunes[k:k+len(vRunes)]) == string(vRunes) {
+						if len(vRunes) > bestLen {
+							bestMatch = string(readingRunes[k : k+len(vRunes)])
+							bestLen = len(vRunes)
+						}
+					}
+					// rendaku match for non-first kanji
+					if j > 0 {
+						rForm := kanji.RendakuForm(v)
+						rRunes := []rune(rForm)
+						if k+len(rRunes) <= len(readingRunes) && string(readingRunes[k:k+len(rRunes)]) == rForm {
+							if len(rRunes) > bestLen {
+								bestMatch = string(readingRunes[k : k+len(rRunes)])
+								bestLen = len(rRunes)
+							}
+						}
 					}
 				}
 			}
@@ -286,6 +336,15 @@ func formatFuriganaBracketsOnly(pairs [][2]string) string {
 		}
 	}
 	return out
+}
+
+// Exported wrappers so other packages (like main) can reuse the improved logic
+func GetFuriganaString(surface, reading string) [][2]string {
+	return getFuriganaString(surface, reading)
+}
+
+func FormatFuriganaBracketsOnly(pairs [][2]string) string {
+	return formatFuriganaBracketsOnly(pairs)
 }
 
 // getFuriganaFromDictionary tries to align kanji and reading using JMdict entry if available
@@ -626,16 +685,61 @@ func alignFuriganaAccurate(surface, reading string) [][2]string {
 			bestLen := 0
 			kanjiReadings := kanji.GetKanjiReadings(s)
 			for _, kr := range kanjiReadings {
-				krH := katakanaToHiragana(kr)
-				krBase := krH
-				if strings.Contains(kr, ".") {
-					krBase = katakanaToHiragana(strings.SplitN(kr, ".", 2)[0])
+				// normalize and try useful variants
+				full := kanji.NormalizeReading(kr)
+				variants := []string{}
+				if full != "" {
+					variants = append(variants, full)
 				}
-				krLen := len([]rune(krBase))
-				if k+krLen <= len(readingRunes) && string(readingRunes[k:k+krLen]) == krBase {
-					if krLen > bestLen {
-						bestMatch = krBase
-						bestLen = krLen
+				if idx := strings.IndexRune(kr, '.'); idx >= 0 {
+					pre := kr[:idx]
+					preNorm := kanji.NormalizeReading(pre)
+					if preNorm != "" {
+						found := false
+						for _, v := range variants {
+							if v == preNorm {
+								found = true
+								break
+							}
+						}
+						if !found {
+							variants = append(variants, preNorm)
+						}
+					}
+				}
+				if strings.HasPrefix(kr, "-") {
+					noLead := kanji.NormalizeReading(strings.TrimPrefix(kr, "-"))
+					if noLead != "" {
+						found := false
+						for _, v := range variants {
+							if v == noLead {
+								found = true
+								break
+							}
+						}
+						if !found {
+							variants = append(variants, noLead)
+						}
+					}
+				}
+				for _, v := range variants {
+					vRunes := []rune(v)
+					if k+len(vRunes) <= len(readingRunes) && string(readingRunes[k:k+len(vRunes)]) == string(vRunes) {
+						if len(vRunes) > bestLen {
+							bestMatch = string(readingRunes[k : k+len(vRunes)])
+							bestLen = len(vRunes)
+						}
+					}
+					// try rendaku for non-first kanji
+					if j > 0 {
+						rForm := kanji.RendakuForm(v)
+						rRunes := []rune(rForm)
+						if k+len(rRunes) <= len(readingRunes) && string(readingRunes[k:k+len(rRunes)]) == rForm {
+							if len(rRunes) > bestLen {
+								bestMatch = string(readingRunes[k : k+len(rRunes)])
+								bestLen = len(rRunes)
+							}
+						}
 					}
 				}
 			}
@@ -691,13 +795,17 @@ func formatFuriganaDisplayAccurate(pairs [][2]string) string {
 	out := ""
 	for _, pair := range pairs {
 		if len(pair[0]) == 0 {
-			continue // skip empty surface segments to avoid index out of range
+			continue
 		}
-		if isKanji([]rune(pair[0])[0]) && pair[1] != "" {
-			out += "[" + pair[0] + "|" + pair[1] + "]"
+		if isKanji([]rune(pair[0])[0]) {
+			out += "[" + pair[1] + "]"
 		} else {
 			out += pair[0]
 		}
 	}
 	return out
 }
+
+// normalizeReading removes non-kana characters (like '.' or '-') and
+// converts katakana to hiragana so kanjidic readings like "い.り" match "いり".
+// use kanji.NormalizeReading

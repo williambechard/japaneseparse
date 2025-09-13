@@ -10,6 +10,47 @@ import (
 	"unicode/utf8"
 )
 
+// rendaku map for shared use
+var rendakuMap = map[rune]rune{
+	'か': 'が', 'き': 'ぎ', 'く': 'ぐ', 'け': 'げ', 'こ': 'ご',
+	'さ': 'ざ', 'し': 'じ', 'す': 'ず', 'せ': 'ぜ', 'そ': 'ぞ',
+	'た': 'だ', 'ち': 'ぢ', 'つ': 'づ', 'て': 'で', 'と': 'ど',
+	'は': 'ば', 'ひ': 'び', 'ふ': 'ぶ', 'へ': 'べ', 'ほ': 'ぼ',
+}
+
+// RendakuForm returns the voiced (rendaku) form of a hiragana string
+func RendakuForm(s string) string {
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return s
+	}
+	if v, ok := rendakuMap[runes[0]]; ok {
+		runes[0] = v
+		return string(runes)
+	}
+	return s
+}
+
+// NormalizeReading removes non-kana characters (dots, hyphens) and
+// converts katakana to hiragana so kanjidic readings like "い.り" match "いり".
+func NormalizeReading(s string) string {
+	var out []rune
+	for _, r := range []rune(s) {
+		// katakana -> hiragana
+		if r >= 0x30A1 && r <= 0x30F6 {
+			out = append(out, r-0x60)
+			continue
+		}
+		// hiragana: keep
+		if r >= 0x3041 && r <= 0x3096 {
+			out = append(out, r)
+			continue
+		}
+		// drop others
+	}
+	return string(out)
+}
+
 var (
 	kanjiReadingMap     map[rune][]string
 	kanjiReadingMapOnce sync.Once
