@@ -26,5 +26,7 @@ func LogJSON(path, id string, data interface{}) error {
 	if err != nil {
 		return err
 	}
+	// Add debugging to verify the file path being written
+	fmt.Printf("DEBUG: Writing JSON to file: %s\n", file)
 	return os.WriteFile(file, bytes, 0644)
 }

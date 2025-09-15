@@ -1,0 +1,111 @@
+2025/09/14 14:29:13 main.go:73: DEBUG: Raw line: '463019: 仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:29:13 main.go:83: DEBUG: Extracted key '仙鳳趾川' from line '463019: 仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:29:13 main.go:84: DEBUG: Comparing key '仙鳳趾川' with lemma '仙坊'
+2025/09/14 14:29:13 main.go:73: DEBUG: Raw line: '463020: 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:29:13 main.go:83: DEBUG: Extracted key '仙鳳趾村' from line '463020: 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:29:13 main.go:84: DEBUG: Comparing key '仙鳳趾村' with lemma '仙坊'
+2025/09/14 14:29:13 main.go:73: DEBUG: Raw line: '463021: 仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:29:13 main.go:83: DEBUG: Extracted key '仙坊' from line '463021: 仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:29:13 main.go:84: DEBUG: Comparing key '仙坊' with lemma '仙坊'
+2025/09/14 14:29:13 main.go:91: ERROR: Index 2 out of bounds for exactIdxs or exactLines
+2025/09/14 14:29:13 main.go:73: DEBUG: Raw line: '463022: 仙防 [せんぼう] /(s) Senbou/'
+2025/09/14 14:29:13 main.go:83: DEBUG: Extracted key '仙防' from line '463022: 仙防 [せんぼう] /(s) Senbou/'
+2025/09/14 14:29:13 main.go:84: DEBUG: Comparing key '仙防' with lemma '仙坊'
+2025/09/14 14:29:13 main.go:73: DEBUG: Raw line: '463023: 仙北 [せんほく] /(s) Senhoku/'
+2025/09/14 14:29:13 main.go:83: DEBUG: Extracted key '仙北' from line '463023: 仙北 [せんほく] /(s) Senhoku/'
+2025/09/14 14:29:13 main.go:84: DEBUG: Comparing key '仙北' with lemma '仙坊'
+2025/09/14 14:29:13 main.go:73: DEBUG: Raw line: '----'
+2025/09/14 14:29:13 main.go:83: DEBUG: Extracted key '----' from line '----'
+2025/09/14 14:29:13 main.go:84: DEBUG: Comparing key '----' with lemma '仙坊'
+2025/09/14 14:29:13 main.go:94: DEBUG: No strict exact match found. Returning all exact matches.
+2025/09/14 14:30:44 main.go:73: DEBUG: Raw line: '463019: 仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:30:44 main.go:83: DEBUG: Extracted key '仙鳳趾川' from line '463019: 仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:30:44 main.go:84: DEBUG: Comparing key '仙鳳趾川' with lemma '仙坊'
+2025/09/14 14:30:44 main.go:73: DEBUG: Raw line: '463020: 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:30:44 main.go:83: DEBUG: Extracted key '仙鳳趾村' from line '463020: 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:30:44 main.go:84: DEBUG: Comparing key '仙鳳趾村' with lemma '仙坊'
+2025/09/14 14:30:44 main.go:73: DEBUG: Raw line: '463021: 仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:30:44 main.go:83: DEBUG: Extracted key '仙坊' from line '463021: 仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:30:44 main.go:84: DEBUG: Comparing key '仙坊' with lemma '仙坊'
+2025/09/14 14:30:44 main.go:87: DEBUG: Length of exactIdxs: 1, Length of exactLines: 6
+2025/09/14 14:30:44 main.go:92: ERROR: Index 2 out of bounds for exactIdxs or exactLines
+2025/09/14 14:30:44 main.go:73: DEBUG: Raw line: '463022: 仙防 [せんぼう] /(s) Senbou/'
+2025/09/14 14:30:44 main.go:83: DEBUG: Extracted key '仙防' from line '463022: 仙防 [せんぼう] /(s) Senbou/'
+2025/09/14 14:30:44 main.go:84: DEBUG: Comparing key '仙防' with lemma '仙坊'
+2025/09/14 14:30:44 main.go:73: DEBUG: Raw line: '463023: 仙北 [せんほく] /(s) Senhoku/'
+2025/09/14 14:30:44 main.go:83: DEBUG: Extracted key '仙北' from line '463023: 仙北 [せんほく] /(s) Senhoku/'
+2025/09/14 14:30:44 main.go:84: DEBUG: Comparing key '仙北' with lemma '仙坊'
+2025/09/14 14:30:44 main.go:73: DEBUG: Raw line: '----'
+2025/09/14 14:30:44 main.go:83: DEBUG: Extracted key '----' from line '----'
+2025/09/14 14:30:44 main.go:84: DEBUG: Comparing key '----' with lemma '仙坊'
+2025/09/14 14:30:44 main.go:95: DEBUG: No strict exact match found. Returning all exact matches.
+2025/09/14 14:31:39 main.go:73: DEBUG: Raw line: '463019: 仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:31:39 main.go:83: DEBUG: Extracted key '仙鳳趾川' from line '463019: 仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:31:39 main.go:84: DEBUG: Comparing key '仙鳳趾川' with lemma '仙坊'
+2025/09/14 14:31:39 main.go:73: DEBUG: Raw line: '463020: 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:31:39 main.go:83: DEBUG: Extracted key '仙鳳趾村' from line '463020: 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:31:39 main.go:84: DEBUG: Comparing key '仙鳳趾村' with lemma '仙坊'
+2025/09/14 14:31:39 main.go:73: DEBUG: Raw line: '463021: 仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:31:39 main.go:83: DEBUG: Extracted key '仙坊' from line '463021: 仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:31:39 main.go:84: DEBUG: Comparing key '仙坊' with lemma '仙坊'
+2025/09/14 14:31:39 main.go:87: DEBUG: exactIdxs: [463020]
+2025/09/14 14:31:39 main.go:88: DEBUG: exactLines: [463019: 仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/ 463020: 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/ 463021: 仙坊 [せんぼう] /(s) Senbou/ 463022: 仙防 [せんぼう] /(s) Senbou/ 463023: 仙北 [せんほく] /(s) Senhoku/ ----]
+2025/09/14 14:31:39 main.go:93: ERROR: Mismatch or index out of bounds. exactIdxs length: 1, exactLines length: 6, index: 2
+2025/09/14 14:31:39 main.go:73: DEBUG: Raw line: '463022: 仙防 [せんぼう] /(s) Senbou/'
+2025/09/14 14:31:39 main.go:83: DEBUG: Extracted key '仙防' from line '463022: 仙防 [せんぼう] /(s) Senbou/'
+2025/09/14 14:31:39 main.go:84: DEBUG: Comparing key '仙防' with lemma '仙坊'
+2025/09/14 14:31:39 main.go:73: DEBUG: Raw line: '463023: 仙北 [せんほく] /(s) Senhoku/'
+2025/09/14 14:31:39 main.go:83: DEBUG: Extracted key '仙北' from line '463023: 仙北 [せんほく] /(s) Senhoku/'
+2025/09/14 14:31:39 main.go:84: DEBUG: Comparing key '仙北' with lemma '仙坊'
+2025/09/14 14:31:39 main.go:73: DEBUG: Raw line: '----'
+2025/09/14 14:31:39 main.go:83: DEBUG: Extracted key '----' from line '----'
+2025/09/14 14:31:39 main.go:84: DEBUG: Comparing key '----' with lemma '仙坊'
+2025/09/14 14:31:39 main.go:96: DEBUG: No strict exact match found. Returning all exact matches.
+2025/09/14 14:32:25 main.go:73: DEBUG: Raw line: '仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:32:25 main.go:83: DEBUG: Extracted key '仙鳳趾川' from line '仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:32:25 main.go:84: DEBUG: Comparing key '仙鳳趾川' with lemma '仙坊'
+2025/09/14 14:32:25 main.go:73: DEBUG: Raw line: '仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:32:25 main.go:83: DEBUG: Extracted key '仙鳳趾村' from line '仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:32:25 main.go:84: DEBUG: Comparing key '仙鳳趾村' with lemma '仙坊'
+2025/09/14 14:32:25 main.go:73: DEBUG: Raw line: '仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:32:25 main.go:83: DEBUG: Extracted key '仙坊' from line '仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:32:25 main.go:84: DEBUG: Comparing key '仙坊' with lemma '仙坊'
+2025/09/14 14:32:25 main.go:87: DEBUG: exactIdxs: [463018 463019 463020 463021 463022]
+2025/09/14 14:32:25 main.go:88: DEBUG: exactLines: [仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/ 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/ 仙坊 [せんぼう] /(s) Senbou/ 仙防 [せんぼう] /(s) Senbou/ 仙北 [せんほく] /(s) Senhoku/]
+2025/09/14 14:32:25 main.go:90: DEBUG: Returning strict exact match: 仙坊 [せんぼう] /(s) Senbou/
+2025/09/14 14:34:47 main.go:73: DEBUG: Raw line: '仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:34:47 main.go:83: DEBUG: Extracted key '仙鳳趾川' from line '仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 14:34:47 main.go:84: DEBUG: Comparing key '仙鳳趾川' with lemma '仙坊'
+2025/09/14 14:34:47 main.go:73: DEBUG: Raw line: '仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:34:47 main.go:83: DEBUG: Extracted key '仙鳳趾村' from line '仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 14:34:47 main.go:84: DEBUG: Comparing key '仙鳳趾村' with lemma '仙坊'
+2025/09/14 14:34:47 main.go:73: DEBUG: Raw line: '仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:34:47 main.go:83: DEBUG: Extracted key '仙坊' from line '仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 14:34:47 main.go:84: DEBUG: Comparing key '仙坊' with lemma '仙坊'
+2025/09/14 14:34:47 main.go:87: DEBUG: exactIdxs: [463018 463019 463020 463021 463022]
+2025/09/14 14:34:47 main.go:88: DEBUG: exactLines: [仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/ 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/ 仙坊 [せんぼう] /(s) Senbou/ 仙防 [せんぼう] /(s) Senbou/ 仙北 [せんほく] /(s) Senhoku/]
+2025/09/14 14:34:47 main.go:90: DEBUG: Returning strict exact match: 仙坊 [せんぼう] /(s) Senbou/
+2025/09/14 15:49:31 main.go:73: DEBUG: Raw line: '仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 15:49:31 main.go:83: DEBUG: Extracted key '仙鳳趾川' from line '仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 15:49:31 main.go:84: DEBUG: Comparing key '仙鳳趾川' with lemma '仙坊'
+2025/09/14 15:49:31 main.go:73: DEBUG: Raw line: '仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 15:49:31 main.go:83: DEBUG: Extracted key '仙鳳趾村' from line '仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 15:49:31 main.go:84: DEBUG: Comparing key '仙鳳趾村' with lemma '仙坊'
+2025/09/14 15:49:31 main.go:73: DEBUG: Raw line: '仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 15:49:31 main.go:83: DEBUG: Extracted key '仙坊' from line '仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 15:49:31 main.go:84: DEBUG: Comparing key '仙坊' with lemma '仙坊'
+2025/09/14 15:49:31 main.go:87: DEBUG: exactIdxs: [463018 463019 463020 463021 463022]
+2025/09/14 15:49:31 main.go:88: DEBUG: exactLines: [仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/ 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/ 仙坊 [せんぼう] /(s) Senbou/ 仙防 [せんぼう] /(s) Senbou/ 仙北 [せんほく] /(s) Senhoku/]
+2025/09/14 15:49:31 main.go:90: DEBUG: Returning strict exact match: 仙坊 [せんぼう] /(s) Senbou/
+2025/09/14 16:00:36 main.go:73: DEBUG: Raw line: '仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 16:00:36 main.go:83: DEBUG: Extracted key '仙鳳趾川' from line '仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/'
+2025/09/14 16:00:36 main.go:84: DEBUG: Comparing key '仙鳳趾川' with lemma '仙坊'
+2025/09/14 16:00:36 main.go:73: DEBUG: Raw line: '仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 16:00:36 main.go:83: DEBUG: Extracted key '仙鳳趾村' from line '仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/'
+2025/09/14 16:00:36 main.go:84: DEBUG: Comparing key '仙鳳趾村' with lemma '仙坊'
+2025/09/14 16:00:36 main.go:73: DEBUG: Raw line: '仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 16:00:36 main.go:83: DEBUG: Extracted key '仙坊' from line '仙坊 [せんぼう] /(s) Senbou/'
+2025/09/14 16:00:36 main.go:84: DEBUG: Comparing key '仙坊' with lemma '仙坊'
+2025/09/14 16:00:36 main.go:87: DEBUG: exactIdxs: [463018 463019 463020 463021 463022]
+2025/09/14 16:00:36 main.go:88: DEBUG: exactLines: [仙鳳趾川 [せんぽうじがわ] /(p) Senpoujigawa/ 仙鳳趾村 [せんぽうしむら] /(p) Senpoushimura/ 仙坊 [せんぼう] /(s) Senbou/ 仙防 [せんぼう] /(s) Senbou/ 仙北 [せんほく] /(s) Senhoku/]
+2025/09/14 16:00:36 main.go:90: DEBUG: Returning strict exact match: 仙坊 [せんぼう] /(s) Senbou/

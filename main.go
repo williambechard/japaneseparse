@@ -9,6 +9,7 @@ import (
 
 	"japaneseparse/analyze"
 	"japaneseparse/dictionary"
+	"japaneseparse/enamdict"
 	"japaneseparse/ingest"
 	"japaneseparse/kanji"
 	"japaneseparse/logger"
@@ -17,6 +18,17 @@ import (
 	"japaneseparse/tokenize"
 )
 
+// Helper: Convert katakana to hiragana
+func katakanaToHiragana(s string) string {
+	runes := []rune(s)
+	for i, r := range runes {
+		if r >= 0x30A1 && r <= 0x30F6 {
+			runes[i] = r - 0x60
+		}
+	}
+	return string(runes)
+}
+
 func main() {
 	// Load dictionaries once at startup
 	if err := dictionary.InitDictionaries("dict/JMdict_e", "dict/enamdict"); err != nil {
@@ -24,12 +36,19 @@ func main() {
 		return
 	}
 
+	// Load ENAMDICT as a fast lookup map
+	enamdictMap, err := enamdict.LoadEnamdict("dict/enamdict")
+	if err != nil {
+		fmt.Println("Failed to load ENAMDICT:", err)
+		return
+	}
+	fmt.Printf("ENAMDICT loaded: %d entries\n", len(enamdictMap))
+
 	// Load Kanjidic2 at startup for furigana alignment
 	if err := kanji.InitKanjidic2("dict/kanjidic2.xml"); err != nil {
 		fmt.Println("Failed to load Kanjidic2:", err)
 		return
 	}
-	// --- DEBUG: Print kanjiReadingMap status ---
 	fmt.Printf("Kanjidic2 loaded: %d kanji entries\n", kanji.Count())
 	fmt.Printf("秋 readings: %v\n", kanji.GetKanjiReadings('秋'))
 	fmt.Printf("田 readings: %v\n", kanji.GetKanjiReadings('田'))
@@ -141,11 +160,19 @@ func main() {
 	// Attach dictionary entries to tokens
 	for i := range mergedTokens {
 		if i < len(lexEntries) {
-			mergedTokens[i].DictionaryEntry = model.DictionaryEntry{
-				Kanji:    []string{lexEntries[i].Token.Text},
-				Readings: lexEntries[i].Readings,
-				Glosses:  lexEntries[i].Definitions,
-				Source:   "lookup.go",
+			// Only overwrite dictionary entry if the lookup produced definitions
+			if len(lexEntries[i].Definitions) > 0 {
+				// Preserve any existing source (e.g. JMdict) if present; otherwise mark as lookup.go
+				src := mergedTokens[i].DictionaryEntry.Source
+				if src == "" {
+					src = "lookup.go"
+				}
+				mergedTokens[i].DictionaryEntry = model.DictionaryEntry{
+					Kanji:    []string{lexEntries[i].Token.Text},
+					Readings: lexEntries[i].Readings,
+					Glosses:  lexEntries[i].Definitions,
+					Source:   src,
+				}
 			}
 		}
 	}
@@ -156,6 +183,26 @@ func main() {
 	if err != nil {
 		fmt.Println("analyze error:", err)
 		return
+	}
+
+	// ENAMDICT fallback for tokens with no glosses
+	for i := range mergedTokens {
+		entry := mergedTokens[i].DictionaryEntry
+		if len(entry.Glosses) == 0 || (len(entry.Glosses) == 1 && entry.Glosses[0] == "<no definition found>") {
+			lemma := mergedTokens[i].Text
+			reading := mergedTokens[i].Reading
+			// Convert katakana reading to hiragana
+			hiraganaReading := katakanaToHiragana(reading)
+			key := lemma + "|" + hiraganaReading
+			if enamEntry, ok := enamdictMap[key]; ok {
+				mergedTokens[i].DictionaryEntry = model.DictionaryEntry{
+					Kanji:    []string{enamEntry.Lemma},
+					Readings: []string{enamEntry.Reading},
+					Glosses:  []string{enamEntry.Meaning},
+					Source:   "ENAMDICT",
+				}
+			}
+		}
 	}
 
 	// --- MERGED OUTPUT ---

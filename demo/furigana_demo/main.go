@@ -1,4 +1,4 @@
-package demotmp
+package main
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 // use shared helpers in kanji package
 
-func DemoMainFurigana() {
+func main() {
 	// Load kanjidic2
 	if err := kanji.InitKanjidic2("dict/kanjidic2.xml"); err != nil {
 		fmt.Printf("Warning: failed to init kanjidic2: %v\n", err)
