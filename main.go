@@ -30,27 +30,27 @@ func katakanaToHiragana(s string) string {
 
 func main() {
 	// Load dictionaries once at startup
+	logger.Logf("DEBUG: Starting dictionary.InitDictionaries...")
 	if err := dictionary.InitDictionaries("dict/JMdict_e", "dict/enamdict"); err != nil {
 		fmt.Println("Failed to load dictionaries:", err)
 		return
 	}
+	logger.Logf("DEBUG: Finished dictionary.InitDictionaries.")
 
-	// Load ENAMDICT as a fast lookup map
+	logger.Logf("DEBUG: Starting enamdict.LoadEnamdict...")
 	enamdictMap, err := enamdict.LoadEnamdict("dict/enamdict")
 	if err != nil {
 		fmt.Println("Failed to load ENAMDICT:", err)
 		return
 	}
-	// fmt.Printf("ENAMDICT loaded: %d entries\n", len(enamdictMap))
+	logger.Logf("DEBUG: Finished enamdict.LoadEnamdict. Entries: %d", len(enamdictMap))
 
-	// Load Kanjidic2 at startup for furigana alignment
+	logger.Logf("DEBUG: Starting kanji.InitKanjidic2...")
 	if err := kanji.InitKanjidic2("dict/kanjidic2.xml"); err != nil {
 		fmt.Println("Failed to load Kanjidic2:", err)
 		return
 	}
-	// fmt.Printf("Kanjidic2 loaded: %d kanji entries\n", kanji.Count())
-	// fmt.Printf("秋 readings: %v\n", kanji.GetKanjiReadings('秋'))
-	// fmt.Printf("田 readings: %v\n", kanji.GetKanjiReadings('田'))
+	logger.Logf("DEBUG: Finished kanji.InitKanjidic2.")
 
 	dictionary.DebugGlossaryFields()
 
@@ -58,29 +58,32 @@ func main() {
 	const text = "秋田県仙北市は市内を流れる入見内川の水位が高まっているため、午前8時40分、角館町西長野の283世帯649人に高齢者等避難の情報を出しました。5段階の警戒レベルのうちレベル3に当たる情報で高齢者や体の不自由な人などに避難を始めるよう呼びかけています。"
 
 	// initialize logs directory (clear existing .json files)
+	logger.Logf("DEBUG: Initializing logs directory...")
 	if err := logger.InitLogs("logs"); err != nil {
 		fmt.Println("failed to init logs:", err)
 		return
 	}
+	logger.Logf("DEBUG: Logs directory initialized.")
 
 	// ingest
+	logger.Logf("DEBUG: Ingesting sentence...")
 	s, err := ingest.IngestSentence(text)
 	if err != nil {
 		fmt.Println("ingest error:", err)
 		return
 	}
+	logger.Logf("DEBUG: Sentence ingested. ID: %s", s.ID)
 
 	// start pipeline for this sentence (simple asynchronous tokenizer)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// start the background tokenizer which consumes IngestChan -> TokenizedChan
+	logger.Logf("DEBUG: Starting tokenizer goroutine...")
 	tokenize.StartTokenizer(context.Background()) // Remove timeout, use background context
-
-	// send sentence to tokenizer pipeline
+	logger.Logf("DEBUG: Sending sentence to tokenizer pipeline...")
 	ingest.IngestChan <- s
-
-	// wait for tokenization result for this sentence
+	logger.Logf("DEBUG: Waiting for tokenization result...")
 	var tokenized tokenize.Tokenized
 	for {
 		t := <-tokenize.TokenizedChan
@@ -89,9 +92,12 @@ func main() {
 			break
 		}
 	}
+	logger.Logf("DEBUG: Tokenization complete. Token count: %d", len(tokenized.Tokens))
 
 	// merge verb+auxiliary tokens
+	logger.Logf("DEBUG: Merging verb auxiliaries...")
 	mergedTokens := tokenize.MergeVerbAuxiliaries(tokenized.Tokens)
+	logger.Logf("DEBUG: Merge complete. Merged token count: %d", len(mergedTokens))
 
 	// output both original and merged tokens
 	tokensOut := map[string]interface{}{
@@ -109,11 +115,13 @@ func main() {
 	}
 
 	// dictionary lookup (new step)
+	logger.Logf("DEBUG: Starting dictionary.LookupDictionary...")
 	dictEntries, err := dictionary.LookupDictionary(context.Background(), mergedTokens)
 	if err != nil {
 		fmt.Println("dictionary lookup error:", err)
 		return
 	}
+	logger.Logf("DEBUG: Dictionary lookup complete.")
 	// enrich mergedTokens with dictionary entries
 	for i := range mergedTokens {
 		mergedTokens[i].DictionaryEntry = dictEntries[i]
@@ -137,7 +145,9 @@ func main() {
 	}
 
 	// update furigana using dictionary data for best accuracy
+	logger.Logf("DEBUG: Updating furigana from dictionary...")
 	mergedTokens = tokenize.UpdateFuriganaFromDictionary(mergedTokens)
+	logger.Logf("DEBUG: Furigana update complete.")
 
 	// log enriched tokens
 	if err := logger.LogJSON("logs", s.ID+"_enriched_tokens", mergedTokens); err != nil {
@@ -151,11 +161,13 @@ func main() {
 
 	// --- DICTIONARY LOOKUP & ANALYSIS ---
 	// Lookup: enrich tokens with dictionary entries
+	logger.Logf("DEBUG: Starting lookup.Lookup...")
 	lexEntries, err := lookup.Lookup(ctx, mergedTokens)
 	if err != nil {
 		fmt.Println("lookup error:", err)
 		return
 	}
+	logger.Logf("DEBUG: lookup.Lookup complete.")
 	// Attach dictionary entries to tokens
 	for i := range mergedTokens {
 		if i < len(lexEntries) {
@@ -176,15 +188,20 @@ func main() {
 		}
 	}
 	// update furigana again after lookup enrichment
+	logger.Logf("DEBUG: Updating furigana from dictionary (post-lookup)...")
 	mergedTokens = tokenize.UpdateFuriganaFromDictionary(mergedTokens)
+	logger.Logf("DEBUG: Furigana update complete (post-lookup).")
 
+	logger.Logf("DEBUG: Starting analyze.Analyze...")
 	analysis, err := analyze.Analyze(context.Background(), s, lexEntries)
 	if err != nil {
 		fmt.Println("analyze error:", err)
 		return
 	}
+	logger.Logf("DEBUG: analyze.Analyze complete.")
 
 	// ENAMDICT fallback for tokens with no glosses
+	logger.Logf("DEBUG: Starting ENAMDICT fallback for missing glosses...")
 	for i := range mergedTokens {
 		entry := mergedTokens[i].DictionaryEntry
 		if len(entry.Glosses) == 0 || (len(entry.Glosses) == 1 && entry.Glosses[0] == "<no definition found>") {
@@ -203,6 +220,7 @@ func main() {
 			}
 		}
 	}
+	logger.Logf("DEBUG: ENAMDICT fallback complete.")
 
 	// --- MERGED OUTPUT ---
 	mergedOutput := map[string]interface{}{
@@ -211,14 +229,18 @@ func main() {
 		"tokens":      mergedTokens,
 		"analysis":    analysis,
 	}
+	logger.Logf("DEBUG: Writing merged output log...")
 	if err := logger.LogJSON("logs", s.ID+"_merged", mergedOutput); err != nil {
 		fmt.Println("failed to write merged output log:", err)
 	}
+	logger.Logf("DEBUG: Merged output log written.")
 	// out, _ := json.MarshalIndent(mergedOutput, "", "  ")
 	// fmt.Println(string(out))
 
 	// write analysis to logs/<id>_analysis.json
+	logger.Logf("DEBUG: Writing analysis log...")
 	if err := logger.LogJSON("logs", s.ID+"_analysis", analysis); err != nil {
 		fmt.Println("failed to write analysis log:", err)
 	}
+	logger.Logf("DEBUG: Analysis log written.")
 }

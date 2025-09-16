@@ -100,14 +100,22 @@ func InitDictionaries(jmdictPath, enamdictPath string) error {
 	jmDictMap = make(map[string][]model.DictionaryEntry)
 	f, err := os.Open(jmPath)
 	if err != nil {
+		logf("ERROR: JMdict preload failed: %v", err)
 		return fmt.Errorf("JMdict preload failed: %w", err)
 	}
 	defer f.Close()
 	r := bufio.NewReader(f)
-	// var buf strings.Builder // removed unused variable
+	lineCount := 0
+	entryCount := 0
+	logf("DEBUG: Starting JMdict preload loop...")
 	for {
 		line, err := r.ReadString('\n')
+		lineCount++
+		if lineCount%100000 == 0 {
+			logf("DEBUG: JMdict lines read: %d, entries: %d", lineCount, entryCount)
+		}
 		if err != nil && err != io.EOF {
+			logf("ERROR: JMdict read error: %v", err)
 			return fmt.Errorf("JMdict read error: %w", err)
 		}
 		if strings.Contains(line, "<entry") {
@@ -164,32 +172,75 @@ func InitDictionaries(jmdictPath, enamdictPath string) error {
 			for _, r := range rs {
 				jmDictMap[r] = append(jmDictMap[r], entry)
 			}
+			entryCount++
 		}
 		if err == io.EOF {
+			logf("DEBUG: JMdict preload complete. Lines read: %d, entries: %d", lineCount, entryCount)
 			break
 		}
 	}
 
-	// Load ENAMDICT into memory map (key: kanji, value: reading/gloss line)
+	logf("DEBUG: Starting ENAMDICT preload...")
 	enamDictMap = make(map[string]string)
 	f2, err := os.Open(enamPath)
 	if err == nil {
 		defer f2.Close()
-		r2 := bufio.NewReader(f2)
+		// Decode as EUC-JP
+		r2 := bufio.NewReader(transform.NewReader(f2, japanese.EUCJP.NewDecoder()))
+		lineCount := 0
+		entryCount := 0
 		for {
 			line, err := r2.ReadString('\n')
-			if err != nil && err != io.EOF {
-				break
-			}
-			fields := strings.Fields(line)
-			if len(fields) > 0 {
-				enamDictMap[fields[0]] = line
-			}
+			lineCount++
 			if err == io.EOF {
+				// Handle last line if not empty
+				l := strings.TrimSpace(line)
+				if l != "" && strings.Contains(l, "[") && strings.Contains(l, "]") {
+					bracket := strings.Index(l, "[")
+					kanji := strings.TrimSpace(l[:bracket])
+					rest := l[bracket+1:]
+					close := strings.Index(rest, "]")
+					if close >= 0 {
+						reading := rest[:close]
+						hiraganaReading := katakanaToHiragana(reading)
+						key := kanji + "|" + hiraganaReading
+						enamDictMap[key] = line
+						entryCount++
+					}
+				}
+				logf("DEBUG: ENAMDICT preload complete. Lines read: %d, entries: %d", lineCount, entryCount)
 				break
+			}
+			if err != nil {
+				logf("ERROR: ENAMDICT read error: %v", err)
+				break
+			}
+			// Extract kanji and reading for key normalization
+			l := strings.TrimSpace(line)
+			if l == "" || !strings.Contains(l, "[") || !strings.Contains(l, "]") {
+				continue
+			}
+			bracket := strings.Index(l, "[")
+			kanji := strings.TrimSpace(l[:bracket])
+			rest := l[bracket+1:]
+			close := strings.Index(rest, "]")
+			if close < 0 {
+				continue
+			}
+			reading := rest[:close]
+			// Normalize reading to hiragana for the key
+			hiraganaReading := katakanaToHiragana(reading)
+			key := kanji + "|" + hiraganaReading
+			enamDictMap[key] = line
+			entryCount++
+			if lineCount%100000 == 0 {
+				logf("DEBUG: ENAMDICT lines read: %d, entries: %d", lineCount, entryCount)
 			}
 		}
+	} else {
+		logf("ERROR: Could not open ENAMDICT: %v", err)
 	}
+	logf("DEBUG: Finished ENAMDICT preload.")
 	if jmdictPath != "" {
 		jmPath = jmdictPath
 	}

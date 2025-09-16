@@ -73,7 +73,9 @@ func LoadEnamdict(path string) (map[string]EnamdictEntry, error) {
 		return nil, err
 	}
 	defer f.Close()
-	reader := bufio.NewReader(f)
+	// Decode as EUC-JP
+	r := transform.NewReader(f, japanese.EUCJP.NewDecoder())
+	reader := bufio.NewReader(r)
 	m := make(map[string]EnamdictEntry)
 	for {
 		line, err := reader.ReadString('\n')
