@@ -2,13 +2,13 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
-	"log"
 	"os"
 	"sort"
 	"strings"
 	"unicode"
+
+	"japaneseparse/logger"
 
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
@@ -204,14 +204,14 @@ func main() {
 	}
 
 	for _, t := range tests {
-		fmt.Println("========================================")
-		fmt.Printf("Token: %s   Lemma: %s   (%s)\n", t.Token, t.Lemma, t.Note)
+		// fmt.Println("========================================")
+		// fmt.Printf("Token: %s   Lemma: %s   (%s)\n", t.Token, t.Lemma, t.Note)
 
 		jmResults, err := lookupJMdict(jmdictPath, t.Lemma, 5)
 		if err != nil {
-			log.Printf("JMdict lookup error: %v\n", err)
+			logger.Logf("JMdict lookup error: %v", err)
 		} else if len(jmResults) == 0 {
-			fmt.Println("JMdict: no entries found for lemma")
+			// fmt.Println("JMdict: no entries found for lemma")
 		} else {
 			// For particles, reorder JMdict results using a data-driven prioritizer
 			// instead of injecting hardcoded canonical entries. This scores each
@@ -221,37 +221,37 @@ func main() {
 			if p == "の" || p == "が" || p == "は" {
 				jmResults = prioritizeParticleResults(p, jmResults)
 			}
-			fmt.Println("JMdict results:")
-			for i, r := range jmResults {
-				fmt.Printf("  Result %d:\n", i+1)
-				fmt.Printf("    Kanji: %v\n", r.Kanji)
-				fmt.Printf("    Readings: %s\n", strings.Join(r.Reading, ", "))
-				if len(r.Glosses) > 0 {
-					limit := 5
-					if len(r.Glosses) < limit {
-						limit = len(r.Glosses)
-					}
-					fmt.Println("    Glosses:")
-					for gi := 0; gi < limit; gi++ {
-						fmt.Printf("      %d. %s\n", gi+1, r.Glosses[gi])
-					}
-					if len(r.Glosses) > limit {
-						fmt.Printf("      ...and %d more\n", len(r.Glosses)-limit)
-					}
-				}
-			}
+			// fmt.Println("JMdict results:")
+			// for i, r := range jmResults {
+			// 	fmt.Printf("  Result %d:\n", i+1)
+			// 	fmt.Printf("    Kanji: %v\n", r.Kanji)
+			// 	fmt.Printf("    Readings: %s\n", strings.Join(r.Reading, ", "))
+			// 	if len(r.Glosses) > 0 {
+			// 		limit := 5
+			// 		if len(r.Glosses) < limit {
+			// 			limit = len(r.Glosses)
+			// 		}
+			// 		fmt.Println("    Glosses:")
+			// 		for gi := 0; gi < limit; gi++ {
+			// 			fmt.Printf("      %d. %s\n", gi+1, r.Glosses[gi])
+			// 		}
+			// 		if len(r.Glosses) > limit {
+			// 			fmt.Printf("      ...and %d more\n", len(r.Glosses)-limit)
+			// 		}
+			// 	}
+			// }
 		}
 
 		enamResults, err := lookupEnamdict(enamPath, t.Lemma, 5)
 		if err != nil {
-			log.Printf("ENAMDICT lookup error: %v\n", err)
+			logger.Logf("ENAMDICT lookup error: %v", err)
 		} else if len(enamResults) == 0 {
-			fmt.Println("ENAMDICT: no matches found for lemma (encoding/format may differ)")
+			// fmt.Println("ENAMDICT: no matches found for lemma (encoding/format may differ)")
 		} else {
-			fmt.Println("ENAMDICT hits:")
-			for i, l := range enamResults {
-				fmt.Printf("  %d: %s\n", i+1, l)
-			}
+			// fmt.Println("ENAMDICT hits:")
+			// for i, l := range enamResults {
+			// 	fmt.Printf("  %d: %s\n", i+1, l)
+			// }
 		}
 	}
 }

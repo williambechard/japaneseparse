@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"japaneseparse/kanji"
+	"japaneseparse/logger"
 	"strings"
 )
 
@@ -11,13 +11,13 @@ import (
 func main() {
 	// Load kanjidic2
 	if err := kanji.InitKanjidic2("dict/kanjidic2.xml"); err != nil {
-		fmt.Printf("Warning: failed to init kanjidic2: %v\n", err)
+		logger.Logf("Warning: failed to init kanjidic2: %v", err)
 	}
 
 	text := "入見内川"
 	reading := "イリミナイカワ"
 	readingH := katakanaToHiragana(reading)
-	fmt.Printf("Surface: %s\nReading (katakana): %s\nReading (hiragana): %s\n", text, reading, readingH)
+	// fmt.Printf("Surface: %s\nReading (katakana): %s\nReading (hiragana): %s\n", text, reading, readingH)
 
 	// Greedy, longest-match per kanji with rendaku support
 	surfaceRunes := []rune(text)
@@ -29,11 +29,11 @@ func main() {
 	for i := range bracketPos {
 		bracketPos[i] = -1
 	}
-	fmt.Println("\nStep-by-step matching:")
+	// fmt.Println("\nStep-by-step matching:")
 	for i, s := range surfaceRunes {
 		if isKanji(s) {
 			candidates := kanji.GetKanjiReadings(s)
-			fmt.Printf("kanji[%d]=%c candidates=%v\n", i, s, candidates)
+			// fmt.Printf("kanji[%d]=%c candidates=%v\n", i, s, candidates)
 			bestMatch := ""
 			bestLen := 0
 			// Try each candidate reading (converted to hiragana)
@@ -91,12 +91,12 @@ func main() {
 				}
 			}
 			if bestLen > 0 {
-				fmt.Printf("  chosen: %s (len=%d) at rPos=%d\n", bestMatch, bestLen, rPos)
+				// fmt.Printf("  chosen: %s (len=%d) at rPos=%d\n", bestMatch, bestLen, rPos)
 				// output only the furigana in brackets (kanji is not printed)
 				out += "[" + bestMatch + "]"
 				rPos += bestLen
 			} else {
-				fmt.Printf("  no candidate matched at rPos=%d -> leaving empty\n", rPos)
+				// fmt.Printf("  no candidate matched at rPos=%d -> leaving empty\n", rPos)
 				// append empty bracket and record its position to fill later
 				bracketPos[i] = len(out)
 				out += "[]"
@@ -113,7 +113,7 @@ func main() {
 
 	// assign any remaining reading to last kanji if empty
 	if rPos < len(readingRunes) {
-		fmt.Printf("remaining reading after loop: %s\n", string(readingRunes[rPos:]))
+		// fmt.Printf("remaining reading after loop: %s\n", string(readingRunes[rPos:]))
 		// find last kanji index
 		lastKanji := -1
 		for i := len([]rune(text)) - 1; i >= 0; i-- {
@@ -136,8 +136,8 @@ func main() {
 		}
 	}
 
-	fmt.Printf("\nFinal alignment: %s\n", out)
-	fmt.Println("Expected visual grouping (hiragana): [いり][み][ない][かわ]")
+	// fmt.Printf("\nFinal alignment: %s\n", out)
+	// fmt.Println("Expected visual grouping (hiragana): [いり][み][ない][かわ]")
 }
 
 func isKanji(r rune) bool {

@@ -5,9 +5,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
+
+	"japaneseparse/logger"
 )
 
 // Lightweight JMdict entry subset for streaming decode
@@ -146,7 +147,7 @@ func DemoMainDictionary() {
 
 		jmResults, err := lookupJMdict(jmdictPath, t.Lemma, 5)
 		if err != nil {
-			log.Printf("JMdict lookup error: %v\n", err)
+			logger.Logf("JMdict lookup error: %v", err)
 		} else if len(jmResults) == 0 {
 			fmt.Println("JMdict: no entries found for lemma")
 		} else {
@@ -163,7 +164,7 @@ func DemoMainDictionary() {
 
 		enamResults, err := lookupEnamdict(enamPath, t.Lemma, 5)
 		if err != nil {
-			log.Printf("ENAMDICT lookup error: %v\n", err)
+			logger.Logf("ENAMDICT lookup error: %v", err)
 		} else if len(enamResults) == 0 {
 			fmt.Println("ENAMDICT: no matches found for lemma (encoding/format may differ)")
 		} else {

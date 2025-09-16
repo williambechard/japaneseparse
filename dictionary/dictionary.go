@@ -5,18 +5,79 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 
+	"japaneseparse/logger"
 	"japaneseparse/model"
 	"japaneseparse/tokenize"
 )
+
+var logEnabled = os.Getenv("JAPARSE_LOG") != "0" && os.Getenv("JAPARSE_LOG") != "false"
+
+func logf(format string, v ...interface{}) {
+	if logEnabled {
+		logger.Logf(format, v...)
+	}
+}
+
+// Global in-memory maps for fast dictionary lookup
+var jmDictMap map[string][]model.DictionaryEntry
+var enamDictMap map[string]string
+var internedStrings sync.Map
+
+// intern returns a single instance of each unique string
+func intern(s string) string {
+	if s == "" {
+		return s
+	}
+	if v, ok := internedStrings.Load(s); ok {
+		return v.(string)
+	}
+	internedStrings.Store(s, s)
+	return s
+}
+
+func internSlice(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = intern(s)
+	}
+	return out
+}
+
+// isKatakana returns true if the string is all katakana (ignoring non-letters)
+func isKatakana(s string) bool {
+	for _, r := range s {
+		if r >= 0x30A1 && r <= 0x30F6 {
+			continue
+		}
+		if unicode.IsSpace(r) || unicode.IsPunct(r) || unicode.IsSymbol(r) {
+			continue
+		}
+		return false
+	}
+	return len(s) > 0
+}
+
+// normalizeReadings returns readings in hiragana unless the original is all katakana
+func normalizeReadings(readings []string) []string {
+	out := make([]string, len(readings))
+	for i, r := range readings {
+		if isKatakana(r) {
+			out[i] = r
+		} else {
+			out[i] = katakanaToHiragana(r)
+		}
+	}
+	return out
+}
 
 // katakanaToHiragana converts katakana to hiragana for reading normalization
 func katakanaToHiragana(s string) string {
@@ -35,6 +96,100 @@ var (
 )
 
 func InitDictionaries(jmdictPath, enamdictPath string) error {
+	// Load JMdict into memory map
+	jmDictMap = make(map[string][]model.DictionaryEntry)
+	f, err := os.Open(jmPath)
+	if err != nil {
+		return fmt.Errorf("JMdict preload failed: %w", err)
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	// var buf strings.Builder // removed unused variable
+	for {
+		line, err := r.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("JMdict read error: %w", err)
+		}
+		if strings.Contains(line, "<entry") {
+			// Very simple parse: extract keb/reb and glosses
+			var ks, rs, glosses []string
+			for {
+				i := strings.Index(line, "<keb>")
+				if i < 0 {
+					break
+				}
+				i += len("<keb>")
+				j := strings.Index(line[i:], "</keb>")
+				if j < 0 {
+					break
+				}
+				ks = append(ks, intern(strings.TrimSpace(line[i:i+j])))
+				line = line[i+j+len("</keb>"):]
+			}
+			for {
+				i := strings.Index(line, "<reb>")
+				if i < 0 {
+					break
+				}
+				i += len("<reb>")
+				j := strings.Index(line[i:], "</reb>")
+				if j < 0 {
+					break
+				}
+				rs = append(rs, intern(strings.TrimSpace(line[i:i+j])))
+				line = line[i+j+len("</reb>"):]
+			}
+			for {
+				i := strings.Index(line, "<gloss>")
+				if i < 0 {
+					break
+				}
+				i += len("<gloss>")
+				j := strings.Index(line[i:], "</gloss>")
+				if j < 0 {
+					break
+				}
+				glosses = append(glosses, intern(strings.TrimSpace(line[i:i+j])))
+				line = line[i+j+len("</gloss>"):]
+			}
+			entry := model.DictionaryEntry{
+				Source:   "JMdict",
+				Kanji:    internSlice(ks),
+				Readings: normalizeReadings(internSlice(rs)),
+				Glosses:  internSlice(glosses),
+			}
+			for _, k := range ks {
+				jmDictMap[k] = append(jmDictMap[k], entry)
+			}
+			for _, r := range rs {
+				jmDictMap[r] = append(jmDictMap[r], entry)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+	}
+
+	// Load ENAMDICT into memory map (key: kanji, value: reading/gloss line)
+	enamDictMap = make(map[string]string)
+	f2, err := os.Open(enamPath)
+	if err == nil {
+		defer f2.Close()
+		r2 := bufio.NewReader(f2)
+		for {
+			line, err := r2.ReadString('\n')
+			if err != nil && err != io.EOF {
+				break
+			}
+			fields := strings.Fields(line)
+			if len(fields) > 0 {
+				enamDictMap[fields[0]] = line
+			}
+			if err == io.EOF {
+				break
+			}
+		}
+	}
 	if jmdictPath != "" {
 		jmPath = jmdictPath
 	}
@@ -63,14 +218,9 @@ func scanLinesForLemma(sc *bufio.Scanner, lemma string, max int) []string {
 	var hits []string
 	for sc.Scan() {
 		line := sc.Text()
-		if lemma == "仙北" {
-			log.Printf("DEBUG: Scanning line for '仙北': %s", line)
-		}
+
 		if strings.Contains(line, lemma) {
 			line = strings.TrimFunc(line, func(r rune) bool { return !unicode.IsPrint(r) })
-			if lemma == "仙北" {
-				log.Printf("DEBUG: Found hit for '仙北': %s", line)
-			}
 			hits = append(hits, line)
 			if len(hits) >= max {
 				break
@@ -88,11 +238,11 @@ func LookupEnamdictMostLikely(path, lemma string, max int) (string, error) {
 	}
 	defer f.Close()
 
-	log.Printf("DEBUG: Starting EUC-JP scan for lemma '%s' in ENAMDICT.", lemma)
+	logf("DEBUG: Starting EUC-JP scan for lemma '%s' in ENAMDICT.", lemma)
 	tr := transform.NewReader(f, japanese.EUCJP.NewDecoder())
 	sc := bufio.NewScanner(tr)
 	hits := scanLinesForLemma(sc, lemma, max)
-	log.Printf("DEBUG: All hits for lemma '%s': %v", lemma, hits)
+	logf("DEBUG: All hits for lemma '%s': %v", lemma, len(hits))
 	for _, hit := range hits {
 		// Extract key (kanji) from line: up to first '['
 		key := hit
@@ -108,7 +258,7 @@ func LookupEnamdictMostLikely(path, lemma string, max int) (string, error) {
 		} else {
 			key = strings.Fields(key)[0]
 		}
-		log.Printf("DEBUG: Extracted key '%s' and reading '%s' from line '%s'", key, reading, hit)
+		logf("DEBUG: Extracted key '%s' and reading '%s' from line '%s'", key, reading, hit)
 		if key == lemma {
 			// If caller provides a reading, require it to match
 			// (normalize katakana to hiragana for both)
@@ -127,7 +277,7 @@ func LookupEnamdictMostLikely(path, lemma string, max int) (string, error) {
 					normLemmaReading := katakanaToHiragana(lemmaReading)
 					normHitReading := katakanaToHiragana(reading)
 					if normLemmaReading != normHitReading {
-						log.Printf("DEBUG: Reading mismatch for '%s': token '%s' vs dict '%s'", lemma, normLemmaReading, normHitReading)
+						logf("DEBUG: Reading mismatch for '%s': token '%s' vs dict '%s'", lemma, normLemmaReading, normHitReading)
 						continue
 					}
 				}
@@ -139,15 +289,15 @@ func LookupEnamdictMostLikely(path, lemma string, max int) (string, error) {
 				lastSpace := strings.LastIndex(beforeSlash, " ")
 				if lastSpace > 0 && lastSpace < len(beforeSlash)-1 {
 					english := beforeSlash[lastSpace+1:]
-					log.Printf("DEBUG: Extracted English gloss for '%s': %s", lemma, english)
+					logf("DEBUG: Extracted English gloss for '%s': %s", lemma, english)
 					return english, nil
 				}
 			}
-			log.Printf("DEBUG: Could not extract English gloss for '%s' from line: %s", lemma, hit)
+			logf("DEBUG: Could not extract English gloss for '%s' from line: %s", lemma, hit)
 			return "", nil
 		}
 	}
-	log.Printf("DEBUG: No exact matches found for lemma '%s'.", lemma)
+	logf("DEBUG: No exact matches found for lemma '%s'.", lemma)
 	return "", nil
 }
 
@@ -250,7 +400,7 @@ func lookupJMdict(path, lemma string, max int) ([]model.DictionaryEntry, error) 
 				results = append(results, model.DictionaryEntry{
 					Source:   "JMdict",
 					Kanji:    ks,
-					Readings: rs,
+					Readings: normalizeReadings(rs),
 					Glosses:  glosses,
 					POS:      poss,
 				})
@@ -278,17 +428,32 @@ func lookupJMdict(path, lemma string, max int) ([]model.DictionaryEntry, error) 
 // when present (preferred) or token.Text otherwise.
 func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.DictionaryEntry, error) {
 	out := make([]model.DictionaryEntry, len(tokens))
+	lemmaToIdxs := make(map[string][]int)
+	lemmaToToken := make(map[string]tokenize.Token)
 	for i, t := range tokens {
 		lemma := t.Lemma
 		if lemma == "" {
 			lemma = t.Text
 		}
+		lemmaToIdxs[lemma] = append(lemmaToIdxs[lemma], i)
+		if _, ok := lemmaToToken[lemma]; !ok {
+			lemmaToToken[lemma] = t
+		}
+	}
 
+	lemmaResults := make(map[string]model.DictionaryEntry)
+	for lemma, t := range lemmaToToken {
+		lemma = intern(lemma)
 		// Try JMdict first
 		jmResults, err := lookupJMdict(jmPath, lemma, 3)
+		var entry model.DictionaryEntry
 		if err == nil && len(jmResults) > 0 {
-			// If token provides a reading, prefer the JMdict entry whose reading
-			// best matches the token reading (normalize katakana->hiragana).
+			for i := range jmResults {
+				jmResults[i].Kanji = internSlice(jmResults[i].Kanji)
+				jmResults[i].Readings = internSlice(jmResults[i].Readings)
+				jmResults[i].Glosses = internSlice(jmResults[i].Glosses)
+			}
+			// (reuse the original per-token logic for picking best entry)
 			pick := 0
 			tokenReading := t.Reading
 			if tokenReading == "" {
@@ -308,11 +473,7 @@ func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.Dic
 					}
 				}
 			}
-
-			// common place-related keywords used by heuristics
 			placeKeywords := []string{"city", "municipal", "town", "village", "ward", "prefecture", "municipality", "capital", "county", "district"}
-
-			// If no clear reading match, prefer entries whose gloss suggests a place/city
 			if normTokenReading == "" || (len(jmResults) > 0 && pick == 0) {
 				for idx, candidate := range jmResults {
 					for _, g := range candidate.Glosses {
@@ -332,71 +493,10 @@ func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.Dic
 					}
 				}
 			}
-
-			// Context and suffix heuristics: prefer place sense when current token
-			// looks like a place suffix (e.g., 市, 町) or when previous token is a
-			// proper name (固有名詞). This helps disambiguate single-character
-			// suffix tokens like 市 where JMdict has multiple senses.
-			prevIsProperNoun := false
-			if i > 0 {
-				prevPOS := tokens[i-1].POS
-				if strings.Contains(prevPOS, "固有名詞") || strings.HasPrefix(prevPOS, "名詞,固有名詞") {
-					prevIsProperNoun = true
-				}
-				// If the previous token was already resolved to a dictionary entry,
-				// use that as an additional hint: ENAMDICT hits or IsName flags are
-				// strong signals that the previous token is a proper name and the
-				// current token might be a place-suffix (e.g. 市, 町).
-				prevEntry := out[i-1]
-				if prevEntry.Source == "ENAMDICT" || prevEntry.IsName {
-					prevIsProperNoun = true
-				}
-				// Also check any POS markers from the previous dictionary entry for
-				// common proper-name markers (some JMdict-derived tags or debug
-				// markers may contain hints). This is conservative: we only set
-				// the flag when an explicit-looking marker appears.
-				for _, ptag := range prevEntry.POS {
-					if strings.Contains(ptag, "&pn;") || strings.Contains(strings.ToLower(ptag), "proper") {
-						prevIsProperNoun = true
-						break
-					}
-				}
-			}
-
-			placeSuffixes := map[string]bool{"市": true, "町": true, "村": true, "県": true, "区": true, "島": true}
-			if prevIsProperNoun || strings.Contains(t.POS, "接尾") || placeSuffixes[t.Text] {
-				for idx, candidate := range jmResults {
-					for _, g := range candidate.Glosses {
-						lg := strings.ToLower(g)
-						for _, kw := range placeKeywords {
-							if strings.Contains(lg, kw) {
-								pick = idx
-								break
-							}
-						}
-						if pick == idx {
-							break
-						}
-					}
-					if pick == idx {
-						break
-					}
-				}
-			}
-
-			// Particle preference: for very common particles, prefer grammatical
-			// senses (entries with no kanji or glosses that look like grammatical
-			// explanations) to avoid selecting content-word senses like 蛾 for "が".
-			// Data-driven particle prioritization: score candidates and reorder
-			// so grammatical senses surface first. Keep focused to the common
-			// particles to avoid unintended reordering for general lemmas.
+			// No context/suffix heuristics in batch mode (could be added if needed)
 			if lemma == "の" || lemma == "が" || lemma == "は" {
 				jmResults = prioritizeParticleResults(lemma, jmResults)
 			}
-
-			// If multiple candidates still exist, and token POS is available,
-			// prefer candidates whose JMdict <pos> contains a matching marker.
-			// Expand mappings to cover more token POS types.
 			tokenPOS := strings.SplitN(t.POS, ",", 2)[0]
 			if tokenPOS != "" && len(jmResults) > 1 {
 				var target string
@@ -414,7 +514,6 @@ func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.Dic
 				case "助動詞":
 					target = "&aux;"
 				case "接尾":
-					// no direct JMdict marker for suffixes; prefer nouns
 					target = "&n;"
 				case "連体詞":
 					target = "&adj;"
@@ -433,35 +532,38 @@ func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.Dic
 					}
 				}
 			}
-
 			first := jmResults[pick]
-			out[i] = model.DictionaryEntry{
+			entry = model.DictionaryEntry{
 				Source:   first.Source,
-				Kanji:    first.Kanji,
-				Readings: first.Readings,
-				Glosses:  first.Glosses,
+				Kanji:    internSlice(first.Kanji),
+				Readings: normalizeReadings(internSlice(first.Readings)),
+				Glosses:  internSlice(first.Glosses),
 			}
-			continue
-		}
-
-		// Fallback to ENAMDICT (raw lines)
-		mostLikely, err := LookupEnamdictMostLikely(enamPath, lemma, 1)
-		if err == nil && mostLikely != "" {
-			out[i] = model.DictionaryEntry{
-				Source:   "ENAMDICT",
-				Kanji:    []string{t.Text},
-				Readings: []string{t.Reading},
-				Glosses:  []string{mostLikely},
+		} else {
+			// Fallback to ENAMDICT (raw lines)
+			mostLikely, err := LookupEnamdictMostLikely(enamPath, lemma, 1)
+			if err == nil && mostLikely != "" {
+				entry = model.DictionaryEntry{
+					Source:   "ENAMDICT",
+					Kanji:    internSlice([]string{t.Text}),
+					Readings: normalizeReadings(internSlice([]string{t.Reading})),
+					Glosses:  internSlice([]string{mostLikely}),
+				}
+			} else {
+				entry = model.DictionaryEntry{
+					Source:   "none",
+					Kanji:    internSlice([]string{t.Text}),
+					Readings: normalizeReadings(internSlice([]string{t.Reading})),
+					Glosses:  internSlice([]string{"<no definition found>"}),
+				}
 			}
-			continue
 		}
-
-		// No hits
-		out[i] = model.DictionaryEntry{
-			Source:   "none",
-			Kanji:    []string{t.Text},
-			Readings: []string{t.Reading},
-			Glosses:  []string{"<no definition found>"},
+		lemmaResults[lemma] = entry
+	}
+	for lemma, idxs := range lemmaToIdxs {
+		entry := lemmaResults[lemma]
+		for _, i := range idxs {
+			out[i] = entry
 		}
 	}
 	return out, nil
@@ -476,9 +578,58 @@ func prioritizeParticleResults(p string, results []model.DictionaryEntry) []mode
 		weightReadingHit = 40
 	)
 	keywords := map[string][]string{
-		"の": {"indicat", "possess", "nominaliz", "particle", "function word"},
-		"が": {"indicat", "subject", "but", "however", "marks", "particle", "case"},
-		"は": {"topic", "contrast", "marks the topic", "wa", "particle", "marks", "topic marker", "postposition", "case"},
+		"の":      {"indicat", "possess", "nominaliz", "particle", "function word"},
+		"が":      {"indicat", "subject", "but", "however", "marks", "particle", "case"},
+		"は":      {"topic", "contrast", "marks the topic", "wa", "particle", "marks", "topic marker", "postposition", "case"},
+		"を":      {"object", "direct object", "accusative", "particle", "marks the object"},
+		"に":      {"direction", "location", "time", "indirect object", "particle", "goal", "destination", "target"},
+		"で":      {"means", "location", "by", "with", "at", "particle", "place of action", "method"},
+		"へ":      {"direction", "to", "toward", "particle", "destination", "goal"},
+		"と":      {"and", "with", "quotative", "together", "particle", "accompaniment", "quotation"},
+		"も":      {"also", "too", "as well", "even", "particle", "in addition"},
+		"から":     {"from", "since", "because", "particle", "origin", "starting point"},
+		"まで":     {"until", "to", "as far as", "particle", "limit", "end point"},
+		"より":     {"than", "from", "particle", "comparison", "starting point"},
+		"や":      {"and", "or", "among", "particle", "listing", "examples"},
+		"やら":     {"and", "or", "particle", "uncertainty", "listing"},
+		"か":      {"or", "question", "particle", "interrogative", "alternative"},
+		"ね":      {"seeking agreement", "isn't it", "particle", "confirmation", "tag question"},
+		"よ":      {"assertion", "emphasis", "particle", "exclamation", "informing"},
+		"ぞ":      {"assertion", "emphasis", "particle", "masculine", "informal"},
+		"ぜ":      {"assertion", "emphasis", "particle", "masculine", "informal"},
+		"さ":      {"assertion", "particle", "casual", "filler", "masculine"},
+		"な":      {"prohibition", "command", "particle", "don't", "imperative"},
+		"でも":     {"even", "but", "however", "particle", "contrast", "alternative"},
+		"しか":     {"only", "nothing but", "particle", "limitation", "exclusivity"},
+		"ばかり":    {"only", "just", "nothing but", "particle", "amount", "limitation"},
+		"ほど":     {"extent", "degree", "as much as", "particle", "comparison"},
+		"くらい":    {"about", "approximately", "as much as", "particle", "degree", "extent"},
+		"ぐらい":    {"about", "approximately", "as much as", "particle", "degree", "extent"},
+		"だって":    {"even", "but", "because", "particle", "emphasis", "reason"},
+		"って":     {"quoting", "as for", "topic", "particle", "quotation", "emphasis"},
+		"とか":     {"among other things", "such as", "or something", "particle", "listing", "examples"},
+		"ながら":    {"while", "during", "although", "particle", "simultaneous action"},
+		"つつ":     {"while", "although", "particle", "simultaneous action", "ongoing"},
+		"つもり":    {"intention", "plan", "particle", "purpose"},
+		"きり":     {"only", "just", "since", "particle", "limitation", "completion"},
+		"きりで":    {"just with", "only with", "particle", "limitation"},
+		"きりに":    {"just to", "only to", "particle", "limitation"},
+		"ずつ":     {"each", "apiece", "particle", "distribution"},
+		"までに":    {"by (time)", "before", "particle", "deadline"},
+		"にて":     {"at", "in", "by means of", "particle", "location", "method"},
+		"にして":    {"at", "in", "with", "as", "particle", "state", "means"},
+		"にとって":   {"for", "to", "from the standpoint of", "particle", "perspective"},
+		"により":    {"by", "due to", "because of", "particle", "means", "reason"},
+		"において":   {"at", "in", "on", "particle", "location", "situation"},
+		"に関して":   {"regarding", "concerning", "about", "particle", "relation"},
+		"について":   {"about", "concerning", "regarding", "particle", "topic"},
+		"として":    {"as", "in the role of", "particle", "capacity", "function"},
+		"としても":   {"even as", "even if", "particle", "hypothetical"},
+		"としては":   {"as for", "in terms of", "particle", "topic"},
+		"としての":   {"as", "of", "particle", "attributive"},
+		"にしては":   {"for", "considering", "particle", "unexpected"},
+		"にしても":   {"even for", "even if", "particle", "hypothetical"},
+		"にしてからが": {"even after", "even since", "particle", "emphasis"},
 	}
 
 	type scored struct {

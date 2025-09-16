@@ -2,6 +2,7 @@ package enamdict
 
 import (
 	"bufio"
+	"encoding/gob"
 	"fmt"
 	"io"
 	"os"
@@ -47,40 +48,57 @@ func parseEnamdictLine(line string) (EnamdictEntry, bool) {
 			entry.Meaning = strings.TrimSpace(after[slash+1:])
 		}
 	}
+	// Remove trailing slash if present
+	entry.Meaning = strings.TrimSuffix(entry.Meaning, "/")
 	return entry, true
 }
 
+var enamDictMap map[string]EnamdictEntry
+
 // LoadEnamdict parses the ENAMDICT file into a map for fast lookup
 func LoadEnamdict(path string) (map[string]EnamdictEntry, error) {
-	entries := make(map[string]EnamdictEntry)
+	gobPath := path + ".gob"
+	if f, err := os.Open(gobPath); err == nil {
+		defer f.Close()
+		dec := gob.NewDecoder(f)
+		var mmap map[string]EnamdictEntry
+		if err := dec.Decode(&mmap); err == nil {
+			fmt.Printf("ENAMDICT loaded from binary: %d keys\n", len(mmap))
+			return mmap, nil
+		}
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-
-	r := bufio.NewReader(transform.NewReader(f, japanese.EUCJP.NewDecoder()))
-	logged := false
+	reader := bufio.NewReader(f)
+	m := make(map[string]EnamdictEntry)
 	for {
-		line, err := r.ReadString('\n')
-		line = strings.TrimRight(line, "\r\n")
-		entry, ok := parseEnamdictLine(line)
-		if ok {
-			if !logged {
-				fmt.Printf("First parsed entry: Lemma=%s, Reading=%s, POS=%s, Meaning=%s\n", entry.Lemma, entry.Reading, entry.POS, entry.Meaning)
-				logged = true
-			}
-			key := entry.Lemma + "|" + entry.Reading
-			entries[key] = entry
-		}
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
+		if len(line) > 0 {
+			entry, ok := parseEnamdictLine(line)
+			if ok {
+				m[entry.Lemma+"|"+entry.Reading] = entry
+			}
+		}
+		if err == io.EOF {
+			break
+		}
 	}
-	return entries, nil
+	fmt.Printf("ENAMDICT preloaded: %d keys\n", len(m))
+	// Save to gob for next time
+	if f, err := os.Create(gobPath); err == nil {
+		defer f.Close()
+		enc := gob.NewEncoder(f)
+		_ = enc.Encode(m)
+		fmt.Printf("ENAMDICT serialized to %s\n", gobPath)
+	}
+	return m, nil
 }
 
 // readFileLines tries to read file as UTF-8; if decodeSJIS is true, decodes as Shift_JIS

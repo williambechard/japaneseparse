@@ -3,8 +3,17 @@ package logger
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 )
+
+var logEnabled = os.Getenv("JAPARSE_LOG") != "0" && os.Getenv("JAPARSE_LOG") != "false"
+
+func Logf(format string, v ...interface{}) {
+	if logEnabled {
+		log.Printf(format, v...)
+	}
+}
 
 func InitLogs(path string) error {
 	// Clear all .json files in the logs directory

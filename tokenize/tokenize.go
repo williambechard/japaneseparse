@@ -6,7 +6,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strings"
 	"sync"
@@ -15,6 +14,7 @@ import (
 
 	"japaneseparse/ingest"
 	"japaneseparse/kanji"
+	"japaneseparse/logger"
 	"japaneseparse/model"
 
 	"github.com/ikawaha/kagome-dict/ipa"
@@ -72,7 +72,7 @@ func InitKanjidic2(path string) error {
 		var loadedKanji []string
 		f, fileErr := os.Open(path)
 		if fileErr != nil {
-			log.Printf("Failed to open kanjidic2.xml: %v", fileErr)
+			logger.Logf("Failed to open kanjidic2.xml: %v", fileErr)
 			return
 		}
 		defer f.Close()
@@ -85,7 +85,7 @@ func InitKanjidic2(path string) error {
 				break
 			}
 			if tokenErr != nil {
-				log.Printf("Failed to parse kanjidic2.xml: %v", tokenErr)
+				logger.Logf("Failed to parse kanjidic2.xml: %v", tokenErr)
 				return
 			}
 			switch se := tok.(type) {
@@ -93,7 +93,7 @@ func InitKanjidic2(path string) error {
 				if se.Name.Local == "character" {
 					var k Kanjidic2Kanji
 					if decodeErr := d.DecodeElement(&k, &se); decodeErr != nil {
-						log.Printf("Failed to decode character: %v", decodeErr)
+						logger.Logf("Failed to decode character: %v", decodeErr)
 						continue
 					}
 					if utf8.RuneCountInString(k.Literal) != 1 {
@@ -113,13 +113,13 @@ func InitKanjidic2(path string) error {
 						loadedKanji = append(loadedKanji, fmt.Sprintf("%c: %v", kanjiRune, readings))
 					}
 					if kanjiRune == '秋' || kanjiRune == '田' {
-						log.Printf("Loaded readings for %c: %v", kanjiRune, readings)
+						logger.Logf("Loaded readings for %c: %v", kanjiRune, readings)
 					}
 				}
 			}
 		}
-		log.Printf("First 10 kanji loaded: %v", loadedKanji)
-		log.Printf("Kanjidic2 loaded: %d kanji entries", len(kanjiReadingMap))
+		logger.Logf("First 10 kanji loaded: %v", loadedKanji)
+		logger.Logf("Kanjidic2 loaded: %d kanji entries", len(kanjiReadingMap))
 	})
 	return err
 }
@@ -127,14 +127,14 @@ func InitKanjidic2(path string) error {
 // GetKanjiReadings returns readings for a kanji rune, with logging
 func GetKanjiReadings(r rune) []string {
 	if kanjiReadingMap == nil {
-		log.Printf("kanjiReadingMap is nil when looking up %c", r)
+		logger.Logf("kanjiReadingMap is nil when looking up %c", r)
 		return nil
 	}
 	readings := kanjiReadingMap[r]
 	if readings == nil {
-		log.Printf("No readings found for kanji %c", r)
+		logger.Logf("No readings found for kanji %c", r)
 	} else {
-		log.Printf("Readings for kanji %c: %v", r, readings)
+		logger.Logf("Readings for kanji %c: %v", r, readings)
 	}
 	return readings
 }
@@ -627,26 +627,26 @@ func TokenizeStream(ctx context.Context, text string) (<-chan Token, <-chan erro
 // tokenizes them and publishes Tokenized results to TokenizedChan.
 func StartTokenizer(ctx context.Context) {
 	go func() {
-		log.Println("[StartTokenizer] Goroutine started, waiting for sentences...")
+		logger.Logf("[StartTokenizer] Goroutine started, waiting for sentences...")
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("[StartTokenizer] Context done, exiting goroutine.")
+				logger.Logf("[StartTokenizer] Context done, exiting goroutine.")
 				return
 			case s := <-ingest.IngestChan:
-				log.Printf("[StartTokenizer] Received sentence: ID=%s, Text=%s", s.ID, s.Text)
+				logger.Logf("[StartTokenizer] Received sentence: ID=%s, Text=%s", s.ID, s.Text)
 				toks, err := Tokenize(ctx, s.Text)
 				if err != nil {
-					log.Printf("[StartTokenizer] Tokenize error: %v", err)
+					logger.Logf("[StartTokenizer] Tokenize error: %v", err)
 					continue
 				}
-				log.Printf("[StartTokenizer] Tokenized %d tokens for sentence ID=%s", len(toks), s.ID)
+				logger.Logf("[StartTokenizer] Tokenized %d tokens for sentence ID=%s", len(toks), s.ID)
 				select {
 				case <-ctx.Done():
-					log.Println("[StartTokenizer] Context done after tokenization, exiting goroutine.")
+					logger.Logf("[StartTokenizer] Context done after tokenization, exiting goroutine.")
 					return
 				case TokenizedChan <- Tokenized{Sentence: s, Tokens: toks}:
-					log.Printf("[StartTokenizer] Published tokenized result for sentence ID=%s", s.ID)
+					logger.Logf("[StartTokenizer] Published tokenized result for sentence ID=%s", s.ID)
 				}
 			}
 		}
@@ -660,14 +660,14 @@ func logFuriganaAlignment(tokenText, tokenReading string, steps []map[string]int
 	filename := fmt.Sprintf("logs/%s_%s_%s_furigana.json", tokenText, tokenReading, randomPart)
 	data, err := json.MarshalIndent(steps, "", "  ")
 	if err != nil {
-		log.Printf("[FURIGANA] Failed to marshal alignment log for %s: %v", tokenText, err)
+		logger.Logf("[FURIGANA] Failed to marshal alignment log for %s: %v", tokenText, err)
 		return
 	}
 	err = os.WriteFile(filename, data, 0644)
 	if err != nil {
-		log.Printf("[FURIGANA] Failed to write alignment log for %s: %v", tokenText, err)
+		logger.Logf("[FURIGANA] Failed to write alignment log for %s: %v", tokenText, err)
 	} else {
-		log.Printf("[FURIGANA] Alignment log written: %s", filename)
+		logger.Logf("[FURIGANA] Alignment log written: %s", filename)
 	}
 }
 

@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"context"
 	"fmt"
@@ -230,3 +231,4 @@ func debugGlossaryFields() {
 		fmt.Println("-", t.Field(i).Name, t.Field(i).Type)
 	}
 }
+*/

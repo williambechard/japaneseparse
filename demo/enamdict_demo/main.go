@@ -1,24 +1,24 @@
 package main
 
 import (
-	"fmt"
 	"japaneseparse/enamdict"
-	"log"
+	"japaneseparse/logger"
 )
 
 func main() {
 	path := "dict/enamdict"
 	entries, err := enamdict.LoadEnamdict(path)
 	if err != nil {
-		log.Fatalf("Failed to load ENAMDICT: %v", err)
+		logger.Logf("Failed to load ENAMDICT: %v", err)
+		return
 	}
-	fmt.Printf("ENAMDICT loaded: %d entries\n", len(entries))
+	// fmt.Printf("ENAMDICT loaded: %d entries\n", len(entries))
 
 	key := "仙北|せんほく"
-	entry, ok := entries[key]
+	_, ok := entries[key]
 	if ok {
-		fmt.Printf("Found entry for %s: Lemma=%s, Reading=%s, POS=%s, Meaning=%s\n", key, entry.Lemma, entry.Reading, entry.POS, entry.Meaning)
+		// fmt.Printf("Found entry for %s: Lemma=%s, Reading=%s, POS=%s, Meaning=%s\n", key, entry.Lemma, entry.Reading, entry.POS, entry.Meaning)
 	} else {
-		fmt.Printf("No entry found for %s\n", key)
+		// fmt.Printf("No entry found for %s\n", key)
 	}
 }

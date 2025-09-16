@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -42,16 +41,16 @@ func main() {
 		fmt.Println("Failed to load ENAMDICT:", err)
 		return
 	}
-	fmt.Printf("ENAMDICT loaded: %d entries\n", len(enamdictMap))
+	// fmt.Printf("ENAMDICT loaded: %d entries\n", len(enamdictMap))
 
 	// Load Kanjidic2 at startup for furigana alignment
 	if err := kanji.InitKanjidic2("dict/kanjidic2.xml"); err != nil {
 		fmt.Println("Failed to load Kanjidic2:", err)
 		return
 	}
-	fmt.Printf("Kanjidic2 loaded: %d kanji entries\n", kanji.Count())
-	fmt.Printf("秋 readings: %v\n", kanji.GetKanjiReadings('秋'))
-	fmt.Printf("田 readings: %v\n", kanji.GetKanjiReadings('田'))
+	// fmt.Printf("Kanjidic2 loaded: %d kanji entries\n", kanji.Count())
+	// fmt.Printf("秋 readings: %v\n", kanji.GetKanjiReadings('秋'))
+	// fmt.Printf("田 readings: %v\n", kanji.GetKanjiReadings('田'))
 
 	dictionary.DebugGlossaryFields()
 
@@ -101,8 +100,8 @@ func main() {
 	}
 
 	// print tokens as JSON so you can inspect the tokenizer output
-	tokOut, _ := json.MarshalIndent(tokensOut, "", "  ")
-	fmt.Println(string(tokOut))
+	// tokOut, _ := json.MarshalIndent(tokensOut, "", "  ")
+	// fmt.Println(string(tokOut))
 
 	// write tokens to logs/<id>_tokens.json
 	if err := logger.LogJSON("logs", s.ID+"_tokens", tokensOut); err != nil {
@@ -121,10 +120,10 @@ func main() {
 	}
 
 	// DEBUG: Print all token surfaces after merging and before furigana update
-	fmt.Println("Merged token surfaces:")
-	for _, t := range mergedTokens {
-		fmt.Println(t.Text)
-	}
+	// fmt.Println("Merged token surfaces:")
+	// for _, t := range mergedTokens {
+	// 	fmt.Println(t.Text)
+	// }
 
 	// DEBUG: Save all token surfaces after merging and before furigana update
 	f, err := os.Create("logs/merged_token_surfaces.log")
@@ -215,8 +214,8 @@ func main() {
 	if err := logger.LogJSON("logs", s.ID+"_merged", mergedOutput); err != nil {
 		fmt.Println("failed to write merged output log:", err)
 	}
-	out, _ := json.MarshalIndent(mergedOutput, "", "  ")
-	fmt.Println(string(out))
+	// out, _ := json.MarshalIndent(mergedOutput, "", "  ")
+	// fmt.Println(string(out))
 
 	// write analysis to logs/<id>_analysis.json
 	if err := logger.LogJSON("logs", s.ID+"_analysis", analysis); err != nil {
