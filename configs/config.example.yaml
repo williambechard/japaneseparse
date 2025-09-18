@@ -1,0 +1,11 @@
+dictionary:
+  jmdict_path: "dict/JMdict_e"
+  enamdict_path: "dict/enamdict"  
+  kanjidic_path: "dict/kanjidic2.xml"
+
+output:
+  logs_dir: "logs"
+  save_logs: true
+  verbose: false
+
+debug: false

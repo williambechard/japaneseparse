@@ -4,7 +4,9 @@ github.com/ikawaha/kagome-dict/ipa v1.2.5 h1:uX9D/T7xNpx1nleDU6SSbpaYHgiAhRs9IIE
 github.com/ikawaha/kagome-dict/ipa v1.2.5/go.mod h1:mfrhW/dynf56fNLSD4fyC29wQsEffWJj7trEJjSZz5Q=
 github.com/ikawaha/kagome/v2 v2.10.2 h1:5bWo0LJqJHzjtpeLQ+XO5IMdyLOMr52de28czE+s1r0=
 github.com/ikawaha/kagome/v2 v2.10.2/go.mod h1:vUBsiTqPQiG+dqSHmvRz3rWb3sCwnS6WO3HNXSPclL4=
-github.com/yomidevs/jmdict-go v0.0.0-20241008135154-36b8b64ae145 h1:ZzUnFFKH4mffBuzUCv2K8Ui38s3QpJf3PGxZSlotHnU=
-github.com/yomidevs/jmdict-go v0.0.0-20241008135154-36b8b64ae145/go.mod h1:1B9+fceSi74MbSl6J22epJS1d583dRGXHOBFSpnDpjQ=
 golang.org/x/text v0.23.0 h1:D71I7dUrlY+VX0gQShAThNGHFxZ13dGLBHQLVl1mJlY=
 golang.org/x/text v0.23.0/go.mod h1:/BLNzu4aZCJ1+kcD0DNRotWKage4q2rGVAg4o22unh4=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
