@@ -1,236 +1,260 @@
 # Japanese Text Parser
 
-A comprehensive Japanese text analysis tool that performs morphological analysis, dictionary lookups, and grammatical structure detection. This tool is designed to help understand Japanese text by breaking it down into tokens, providing readings, definitions, and grammatical information.
+A comprehensive Japanese text analysis library designed for integration into larger applications. This library provides morphological analysis, dictionary lookups, and grammatical structure detection for Japanese text.
+
+**Note**: This is primarily a library component, not a standalone application. It's designed to be embedded in Japanese language interpreters, translation tools, and other language processing applications.
 
 ## Features
 
-- **Morphological Analysis**: Uses MeCab for tokenization and part-of-speech tagging
-- **Dictionary Integration**: JMdict and ENAMDICT support for comprehensive definitions
+- **Morphological Analysis**: MeCab-based tokenization and part-of-speech tagging
+- **Dictionary Integration**: JMdict and ENAMDICT support for comprehensive definitions  
 - **Furigana Generation**: Automatic reading aids for kanji characters
 - **Grammar Analysis**: Clause detection and verb auxiliary merging
-- **Flexible Output**: Both human-readable and JSON output formats
-- **Configurable**: YAML configuration with environment variable overrides
-- **Logging**: Optional detailed logging of intermediate processing steps
+- **Clean API**: Simple integration with minimal dependencies
+- **Flexible Output**: Both detailed analysis and simplified token extraction
+- **No External Dependencies**: Self-contained once dictionaries are provided
 
 ## Quick Start
-
-### Prerequisites
-
-1. **Go 1.21 or higher**
-2. **MeCab and dictionaries** (see [Setup Guide](SETUP.md))
 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/williambechard/japaneseparse.git
-cd japaneseparse
+# Add to your Go project
+go get github.com/yourusername/japaneseparse
 
-# Download dependencies
-go mod download
-
-# Build the parser
-go build -o bin/japanese-parser cmd/parser/main.go
+# In your Go code
+import "japaneseparse/pkg/parser"
 ```
 
 ### Basic Usage
-
-```bash
-# Analyze a simple sentence
-./bin/japanese-parser -text "こんにちは世界"
-
-# Analyze text from a file
-./bin/japanese-parser -file input.txt
-
-# Get JSON output
-./bin/japanese-parser -text "こんにちは世界" -json
-
-# Verbose mode with detailed information
-./bin/japanese-parser -text "こんにちは世界" -verbose
-```
-
-### Configuration
-
-Create a `config.yaml` file:
-
-```yaml
-dictionary:
-  jmdict_path: "dict/JMdict_e"
-  enamdict_path: "dict/enamdict"
-  kanjidic_path: "dict/kanjidic2.xml"
-output:
-  logs_dir: "logs"
-  save_logs: true
-  verbose: false
-debug: false
-```
-
-Use custom configuration:
-
-```bash
-./bin/japanese-parser -config config.yaml -text "文章を解析します"
-```
-
-## Output Format
-
-### Human-Readable Output
-
-```
-=== Japanese Text Analysis ===
-Sentence ID: abc123def456
-Tokens: 5
-Definitions found: 4
-Processed at: 2024-01-15 10:30:45
-
-=== Token Analysis ===
-1. こんにちは [コンニチハ] <感動詞,*,*,*,*,*,こんにちは,コンニチハ,コンニチハ>
-   Meanings: hello; good day; good afternoon
-   Source: JMdict
-
-2. 世界 [セカイ] <名詞,一般,*,*,*,*,世界,セカイ,セカイ>
-   Furigana: [せ][かい]
-   Meanings: the world; society; the universe
-   Source: JMdict
-```
-
-### JSON Output
-
-The JSON output follows the same structure as the `_merged.json` files, containing:
-
-- **sentence_id**: Unique identifier for the analysis
-- **token_count**: Number of tokens in the sentence
-- **tokens**: Array of detailed token information including:
-  - Morphological analysis (POS, readings, etc.)
-  - Dictionary entries with definitions
-  - Furigana for kanji
-  - Conjugation information
-  - Auxiliary verb information
-- **analysis**: Grammatical structure analysis including clause boundaries
-
-See the [API Documentation](API.md) for the complete JSON schema.
-
-## Configuration Options
-
-### Dictionary Paths
-
-Configure paths to your dictionary files:
-
-```yaml
-dictionary:
-  jmdict_path: "dict/JMdict_e"        # JMdict dictionary file
-  enamdict_path: "dict/enamdict"      # ENAMDICT proper names dictionary
-  kanjidic_path: "dict/kanjidic2.xml" # Kanjidic2 kanji dictionary
-```
-
-### Output Settings
-
-```yaml
-output:
-  logs_dir: "logs"      # Directory for detailed log files
-  save_logs: true       # Save intermediate processing steps
-  verbose: false        # Enable verbose console output
-```
-
-### Environment Variables
-
-Override configuration with environment variables:
-
-```bash
-export JMDICT_PATH="/usr/share/dict/JMdict_e"
-export ENAMDICT_PATH="/usr/share/dict/enamdict"
-export KANJIDIC_PATH="/usr/share/dict/kanjidic2.xml"
-export LOGS_DIR="./analysis_logs"
-export SAVE_LOGS=true
-export VERBOSE=true
-export DEBUG=false
-```
-
-## Development
-
-### Project Structure
-
-```
-japaneseparse/
-├── cmd/parser/          # Main executable
-├── internal/            # Private packages
-│   ├── analyzer/        # Core analysis orchestrator
-│   └── config/          # Configuration management
-├── pkg/types/           # Public API types
-├── configs/             # Configuration examples
-├── docs/                # Documentation
-├── analyze/             # Grammar analysis
-├── dictionary/          # Dictionary lookup
-├── tokenize/            # Tokenization logic
-└── ... (other packages)
-```
-
-### Building
-
-```bash
-# Build for current platform
-make build
-
-# Development build with race detection
-make dev-build
-
-# Run tests
-make test
-
-# Format code
-make fmt
-```
-
-### Testing
-
-```bash
-# Run all tests
-go test ./...
-
-# Test with coverage
-make test-coverage
-
-# Test specific package
-go test ./internal/analyzer
-```
-
-## API Usage
-
-You can also use this as a library in your Go projects:
 
 ```go
 package main
 
 import (
     "fmt"
-    "japaneseparse/internal/analyzer"
-    "japaneseparse/internal/config"
+    "log"
+    "japaneseparse/pkg/parser"
 )
 
 func main() {
-    // Load configuration
-    cfg, err := config.Load("config.yaml")
+    // Initialize parser
+    p, err := parser.New()
     if err != nil {
-        panic(err)
+        log.Fatal(err)
     }
 
-    // Create analyzer
-    analyzer := analyzer.New(cfg)
-    if err := analyzer.Initialize(); err != nil {
-        panic(err)
-    }
-
-    // Analyze text
-    result, err := analyzer.AnalyzeText("こんにちは世界")
+    // Parse Japanese text
+    result, err := p.Parse("私が昨日買った本は面白いです")
     if err != nil {
-        panic(err)
+        log.Fatal(err)
     }
 
-    fmt.Printf("Found %d tokens\n", result.TokenCount)
+    // Access analysis results
+    fmt.Printf("Text: %s\n", result.Text)
+    fmt.Printf("Tokens: %d\n", result.TokenCount)
+    
     for _, token := range result.Tokens {
-        fmt.Printf("Token: %s, Reading: %s\n", token.Text, token.Reading)
+        fmt.Printf("- %s [%s] = %v\n", token.Text, token.Reading, token.Meanings)
     }
 }
 ```
+
+## API Reference
+
+### Core Methods
+
+```go
+// Create parser with default settings
+parser, err := parser.New()
+
+// Create parser with custom configuration  
+parser, err := parser.NewWithConfig(&parser.Config{
+    JMdictPath: "/path/to/JMdict_e",
+    SaveLogs:   false, // Disable logging for library use
+})
+
+// Parse text and get complete analysis
+result, err := parser.Parse("日本語のテキスト")
+
+// Get simplified token list
+tokens, err := parser.ParseSimple("日本語のテキスト") 
+
+// Extract just readings (for pronunciation)
+readings, err := parser.GetReadings("日本語のテキスト")
+
+// Extract just meanings (for translation)
+meanings, err := parser.GetMeanings("日本語のテキスト")
+```
+
+### Data Structures
+
+```go
+type ParseResult struct {
+    Text             string   `json:"text"`              // Original input
+    SentenceID       string   `json:"sentence_id"`       // Unique identifier  
+    TokenCount       int      `json:"token_count"`       // Number of tokens
+    DefinitionsFound int      `json:"definitions_found"` // Tokens with definitions
+    Tokens           []Token  `json:"tokens"`            // Detailed analysis
+    Clauses          []Clause `json:"clauses"`           // Sentence structure
+    ProcessedAt      string   `json:"processed_at"`      // Processing timestamp
+}
+
+type Token struct {
+    Text           string   `json:"text"`            // Original text
+    Lemma          string   `json:"lemma"`           // Dictionary form
+    Reading        string   `json:"reading"`         // Pronunciation
+    POS            string   `json:"pos"`             // Part of speech
+    Meanings       []string `json:"meanings"`        // English definitions
+    Furigana       string   `json:"furigana"`        // Reading aids
+    IsConjugated   bool     `json:"is_conjugated"`   // Is this conjugated?
+    Conjugation    string   `json:"conjugation"`     // Conjugation type
+    HasAuxiliaries bool     `json:"has_auxiliaries"` // Has helper verbs?
+    // ... additional fields
+}
+```
+
+## Integration Examples
+
+### Language Interpreter Integration
+
+```go
+// In your interpreter's initialization
+parser, err := parser.New()
+if err != nil {
+    return err
+}
+
+// In your interpreter's main loop
+func processUserInput(input string) {
+    result, err := parser.Parse(input)
+    if err != nil {
+        handleParseError(err)
+        return
+    }
+    
+    // Analyze the parsed result for your interpreter logic
+    for _, token := range result.Tokens {
+        if token.POS == "名詞,固有名詞,人名,*" {
+            // User mentioned a person's name
+            handlePersonName(token.Text, token.Meanings)
+        } else if token.IsConjugated {
+            // Handle conjugated verbs
+            handleVerb(token.Lemma, token.Conjugation)
+        }
+    }
+}
+```
+
+### Batch Processing
+
+```go
+sentences := []string{
+    "おはよう",
+    "今日は何をしますか？", 
+    "映画を見たいです",
+}
+
+results := make([]*parser.ParseResult, len(sentences))
+for i, sentence := range sentences {
+    result, err := parser.Parse(sentence)
+    if err != nil {
+        log.Printf("Failed to parse: %v", err)
+        continue
+    }
+    results[i] = result
+    
+    // Process each result in your application
+    processResult(result)
+}
+```
+
+### Extract Specific Information
+
+```go
+// Get just pronunciation info
+readings, err := parser.GetReadings("こんにちは世界")
+// ["コンニチハ", "セカイ"]
+
+// Get just translation info  
+meanings, err := parser.GetMeanings("こんにちは世界")
+// [["hello", "good day"], ["world", "society"]]
+
+// Lightweight token processing
+tokens, err := parser.ParseSimple("こんにちは世界")
+for _, token := range tokens {
+    fmt.Printf("%s = %s\n", token.Text, token.Meanings[0])
+}
+```
+
+## Configuration
+
+### Default Configuration (Recommended)
+
+```go
+// Uses embedded dictionary paths, no logging
+parser, err := parser.New()
+```
+
+### Custom Configuration
+
+```go
+config := &parser.Config{
+    JMdictPath:   "/custom/path/to/JMdict_e",
+    EnamdictPath: "/custom/path/to/enamdict", 
+    KanjidicPath: "/custom/path/to/kanjidic2.xml",
+    SaveLogs:     false, // Recommended: false for library use
+    Debug:        false,
+}
+
+parser, err := parser.NewWithConfig(config)
+```
+
+## Prerequisites
+
+You need these dictionary files in your `dict/` directory:
+- **JMdict_e**: Japanese-English dictionary
+- **enamdict**: Proper names dictionary  
+- **kanjidic2.xml**: Kanji information
+
+See [Setup Guide](docs/SETUP.md) for download instructions.
+
+## Examples
+
+See the `examples/` directory for complete integration examples:
+- `minimal_integration.go`: Basic usage patterns
+- `library_usage.go`: Advanced integration techniques
+
+## Performance Notes
+
+- **Initialization**: Create the parser once and reuse it
+- **Dictionary Loading**: Happens once during initialization
+- **Thread Safety**: Create separate parser instances for concurrent use
+- **Memory Usage**: Parser keeps dictionaries in memory for fast access
+
+## Error Handling
+
+```go
+result, err := parser.Parse(text)
+if err != nil {
+    // Handle parsing errors
+    log.Printf("Parse failed: %v", err)
+    return
+}
+
+if result.DefinitionsFound == 0 {
+    // Handle case where no definitions were found
+    log.Printf("No dictionary entries found for: %s", text)
+}
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Support
+
+This library is designed for programmatic use. For standalone command-line usage, see the `cmd/parser/` directory.
 
 ## Contributing
 
