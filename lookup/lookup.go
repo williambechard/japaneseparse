@@ -26,6 +26,7 @@ func Lookup(ctx context.Context, tokens []model.Token) ([]LexEntry, error) {
 			Lemma:         t.Lemma,
 			Reading:       t.Reading,
 			Pronunciation: t.Pronunciation,
+			POS:           t.POS, // Include POS information for particle detection
 		}
 	}
 

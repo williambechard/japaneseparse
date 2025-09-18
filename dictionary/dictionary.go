@@ -478,6 +478,7 @@ func lookupJMdict(path, lemma string, max int) ([]model.DictionaryEntry, error) 
 // LookupDictionary returns dictionary entries for tokens. It uses the token.Lemma
 // when present (preferred) or token.Text otherwise.
 func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.DictionaryEntry, error) {
+	logf("DEBUG: LookupDictionary called with %d tokens", len(tokens))
 	out := make([]model.DictionaryEntry, len(tokens))
 	lemmaToIdxs := make(map[string][]int)
 	lemmaToToken := make(map[string]tokenize.Token)
@@ -495,9 +496,43 @@ func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.Dic
 	lemmaResults := make(map[string]model.DictionaryEntry)
 	for lemma, t := range lemmaToToken {
 		lemma = intern(lemma)
+		logf("DEBUG: Processing lemma '%s' with POS '%s'", lemma, t.POS)
 		// Try JMdict first
 		jmResults, err := lookupJMdict(jmPath, lemma, 3)
 		var entry model.DictionaryEntry
+
+		// For particles identified by MeCab, create a particle-specific entry instead of using JMdict
+		tokenPOS := strings.SplitN(t.POS, ",", 2)[0]
+
+		// List of common particles that should always be treated as particles
+		commonParticles := map[string]bool{
+			"は": true, "が": true, "を": true, "に": true, "で": true, "へ": true, "と": true,
+			"も": true, "から": true, "まで": true, "より": true, "や": true, "か": true,
+			"ね": true, "よ": true, "の": true, "でも": true, "だけ": true, "ばかり": true,
+		}
+
+		// Detect particles either by MeCab POS or by known particle list
+		isParticle := tokenPOS == "助詞" || commonParticles[lemma]
+
+		if isParticle {
+			logf("DEBUG: [CALL] Processing particle '%s' with POS '%s' (detected via: %s)",
+				lemma, t.POS,
+				func() string {
+					if tokenPOS == "助詞" {
+						return "MeCab POS"
+					}
+					return "common particle list"
+				}())
+			particleEntry := createParticleEntry(lemma, t.POS)
+			if particleEntry != nil {
+				logf("DEBUG: [CALL] Created particle entry for '%s' with meanings: %v", lemma, particleEntry.Glosses)
+				entry = *particleEntry
+				lemmaResults[lemma] = entry
+				continue
+			}
+			logf("DEBUG: [CALL] Failed to create particle entry for '%s'", lemma)
+		}
+
 		if err == nil && len(jmResults) > 0 {
 			for i := range jmResults {
 				jmResults[i].Kanji = internSlice(jmResults[i].Kanji)
@@ -545,10 +580,14 @@ func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.Dic
 				}
 			}
 			// No context/suffix heuristics in batch mode (could be added if needed)
-			if lemma == "の" || lemma == "が" || lemma == "は" {
-				jmResults = prioritizeParticleResults(lemma, jmResults)
-			}
 			tokenPOS := strings.SplitN(t.POS, ",", 2)[0]
+
+			// Prioritize particle results for common particles and reset pick to use the best result
+			if lemma == "の" || lemma == "が" || lemma == "は" || lemma == "を" || lemma == "に" || lemma == "で" || lemma == "へ" || lemma == "と" || lemma == "も" || lemma == "から" || lemma == "まで" || tokenPOS == "助詞" {
+				jmResults = prioritizeParticleResults(lemma, tokenPOS, jmResults)
+				pick = 0 // Use the top-ranked particle result
+			}
+
 			if tokenPOS != "" && len(jmResults) > 1 {
 				var target string
 				switch tokenPOS {
@@ -613,6 +652,7 @@ func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.Dic
 	}
 	for lemma, idxs := range lemmaToIdxs {
 		entry := lemmaResults[lemma]
+		logf("DEBUG: Assigning entry for lemma '%s' to %d token(s), meanings: %v", lemma, len(idxs), entry.Glosses)
 		for _, i := range idxs {
 			out[i] = entry
 		}
@@ -621,12 +661,14 @@ func LookupDictionary(ctx context.Context, tokens []tokenize.Token) ([]model.Dic
 }
 
 // prioritizeParticleResults orders JMdict candidates for common particles by
-// scoring features: no-kanji, gloss keyword matches, and reading match.
-func prioritizeParticleResults(p string, results []model.DictionaryEntry) []model.DictionaryEntry {
+// scoring features: no-kanji, gloss keyword matches, reading match, and POS match.
+func prioritizeParticleResults(p string, mecabPOS string, results []model.DictionaryEntry) []model.DictionaryEntry {
 	const (
-		weightNoKanji    = 80
-		weightGlossHit   = 50
-		weightReadingHit = 40
+		weightMecabParticle = 300 // Highest weight when MeCab says it's a particle
+		weightParticlePOS   = 200 // Very high weight for entries marked as particles in JMdict
+		weightNoKanji       = 80
+		weightGlossHit      = 50
+		weightReadingHit    = 40
 	)
 	keywords := map[string][]string{
 		"の":      {"indicat", "possess", "nominaliz", "particle", "function word"},
@@ -690,6 +732,20 @@ func prioritizeParticleResults(p string, results []model.DictionaryEntry) []mode
 	var s []scored
 	for i, r := range results {
 		sc := 0
+
+		// Highest priority: MeCab identified this as a particle
+		if mecabPOS == "助詞" {
+			sc += weightMecabParticle
+		}
+
+		// Heavily prioritize entries that are marked as particles in JMdict
+		for _, pos := range r.POS {
+			if strings.Contains(pos, "&prt;") || strings.Contains(strings.ToLower(pos), "particle") {
+				sc += weightParticlePOS
+				break
+			}
+		}
+
 		if len(r.Kanji) == 0 {
 			sc += weightNoKanji
 		}
@@ -716,4 +772,137 @@ func prioritizeParticleResults(p string, results []model.DictionaryEntry) []mode
 		out = append(out, results[v.idx])
 	}
 	return out
+}
+
+// createParticleEntry creates a specialized dictionary entry for particles identified by MeCab
+func createParticleEntry(particle, mecabPOS string) *model.DictionaryEntry {
+	particleDefinitions := map[string]map[string][]string{
+		"は": {
+			"係助詞":    {"topic marker", "marks the topic of a sentence", "contrasts with other items", "as for", "speaking of"},
+			"助詞,係助詞": {"topic marker", "marks the topic of a sentence", "contrasts with other items", "as for", "speaking of"},
+		},
+		"が": {
+			"格助詞":     {"subject marker", "marks the subject of a sentence", "nominative case particle"},
+			"助詞,格助詞":  {"subject marker", "marks the subject of a sentence", "nominative case particle"},
+			"接続助詞":    {"but", "however", "although", "conjunction particle"},
+			"助詞,接続助詞": {"but", "however", "although", "conjunction particle"},
+		},
+		"を": {
+			"格助詞":    {"object marker", "marks the direct object", "accusative case particle"},
+			"助詞,格助詞": {"object marker", "marks the direct object", "accusative case particle"},
+		},
+		"に": {
+			"格助詞":    {"destination marker", "location marker", "time marker", "indirect object marker", "dative case particle"},
+			"助詞,格助詞": {"destination marker", "location marker", "time marker", "indirect object marker", "dative case particle"},
+		},
+		"で": {
+			"格助詞":    {"location marker", "means marker", "method marker", "instrumental case particle", "at", "in", "by"},
+			"助詞,格助詞": {"location marker", "means marker", "method marker", "instrumental case particle", "at", "in", "by"},
+		},
+		"と": {
+			"格助詞":    {"and", "with", "together with", "comitative particle"},
+			"助詞,格助詞": {"and", "with", "together with", "comitative particle"},
+			"副助詞":    {"quotation marker", "quotative particle", "says", "said"},
+			"助詞,副助詞": {"quotation marker", "quotative particle", "says", "said"},
+		},
+		"の": {
+			"格助詞":    {"possessive marker", "genitive case particle", "nominalizer", "indicates possession or attribution"},
+			"助詞,格助詞": {"possessive marker", "genitive case particle", "nominalizer", "indicates possession or attribution"},
+		},
+		"も": {
+			"係助詞":    {"also", "too", "as well", "even", "inclusive particle"},
+			"助詞,係助詞": {"also", "too", "as well", "even", "inclusive particle"},
+		},
+		"へ": {
+			"格助詞":    {"direction marker", "toward", "to", "directional particle"},
+			"助詞,格助詞": {"direction marker", "toward", "to", "directional particle"},
+		},
+		"から": {
+			"格助詞":    {"from", "since", "because", "ablative case particle", "starting point", "reason"},
+			"助詞,格助詞": {"from", "since", "because", "ablative case particle", "starting point", "reason"},
+		},
+		"まで": {
+			"副助詞":    {"until", "to", "as far as", "up to", "limit marker"},
+			"助詞,副助詞": {"until", "to", "as far as", "up to", "limit marker"},
+		},
+		"か": {
+			"副助詞":    {"question marker", "or", "interrogative particle", "alternative marker"},
+			"助詞,副助詞": {"question marker", "or", "interrogative particle", "alternative marker"},
+		},
+		"ね": {
+			"終助詞":    {"confirmation marker", "seeking agreement", "isn't it", "right?", "sentence-ending particle"},
+			"助詞,終助詞": {"confirmation marker", "seeking agreement", "isn't it", "right?", "sentence-ending particle"},
+		},
+		"よ": {
+			"終助詞":    {"assertion marker", "emphasis", "informing", "you know", "sentence-ending particle"},
+			"助詞,終助詞": {"assertion marker", "emphasis", "informing", "you know", "sentence-ending particle"},
+		},
+		"でも": {
+			"副助詞":    {"even", "but", "however", "or something", "alternative marker"},
+			"助詞,副助詞": {"even", "but", "however", "or something", "alternative marker"},
+		},
+		"だけ": {
+			"副助詞":    {"only", "just", "merely", "limitation marker"},
+			"助詞,副助詞": {"only", "just", "merely", "limitation marker"},
+		},
+		"ばかり": {
+			"副助詞":    {"only", "nothing but", "just", "limitation marker", "approximately"},
+			"助詞,副助詞": {"only", "nothing but", "just", "limitation marker", "approximately"},
+		},
+	}
+
+	// Check for exact POS match first, then broader category
+	if definitions, exists := particleDefinitions[particle]; exists {
+		// If we have POS information, try to match it
+		if mecabPOS != "" {
+			if glosses, posExists := definitions[mecabPOS]; posExists {
+				return &model.DictionaryEntry{
+					Source:   "MeCab-Particle",
+					Kanji:    []string{},
+					Readings: []string{particle},
+					Glosses:  glosses,
+					POS:      []string{"&prt;"},
+				}
+			}
+
+			// Try broader category matching
+			posParts := strings.Split(mecabPOS, ",")
+			if len(posParts) >= 2 {
+				broadPOS := posParts[1] // Get the specific particle type (係助詞, 格助詞, etc.)
+				if glosses, posExists := definitions[broadPOS]; posExists {
+					return &model.DictionaryEntry{
+						Source:   "MeCab-Particle",
+						Kanji:    []string{},
+						Readings: []string{particle},
+						Glosses:  glosses,
+						POS:      []string{"&prt;"},
+					}
+				}
+			}
+		}
+
+		// Fallback to most common definition for this particle (works even without POS)
+		for _, glosses := range definitions {
+			return &model.DictionaryEntry{
+				Source:   "Common-Particle",
+				Kanji:    []string{},
+				Readings: []string{particle},
+				Glosses:  glosses,
+				POS:      []string{"&prt;"},
+			}
+		}
+	}
+
+	// Generic fallback for any particle not in our definitions
+	if strings.HasPrefix(mecabPOS, "助詞") {
+		return &model.DictionaryEntry{
+			Source:   "MeCab-Particle",
+			Kanji:    []string{},
+			Readings: []string{particle},
+			Glosses:  []string{"particle", "grammatical particle"},
+			POS:      []string{"&prt;"},
+		}
+	}
+
+	return nil
 }
