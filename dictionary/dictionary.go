@@ -98,7 +98,7 @@ var (
 func InitDictionaries(jmdictPath, enamdictPath string) error {
 	// Load JMdict into memory map
 	jmDictMap = make(map[string][]model.DictionaryEntry)
-	f, err := os.Open(jmPath)
+	f, err := os.Open(jmdictPath)
 	if err != nil {
 		logf("ERROR: JMdict preload failed: %v", err)
 		return fmt.Errorf("JMdict preload failed: %w", err)
@@ -182,7 +182,7 @@ func InitDictionaries(jmdictPath, enamdictPath string) error {
 
 	logf("DEBUG: Starting ENAMDICT preload...")
 	enamDictMap = make(map[string]string)
-	f2, err := os.Open(enamPath)
+	f2, err := os.Open(enamdictPath)
 	if err == nil {
 		defer f2.Close()
 		// Decode as EUC-JP
@@ -203,9 +203,13 @@ func InitDictionaries(jmdictPath, enamdictPath string) error {
 					if close >= 0 {
 						reading := rest[:close]
 						hiraganaReading := katakanaToHiragana(reading)
-						key := kanji + "|" + hiraganaReading
-						enamDictMap[key] = line
-						entryCount++
+						// Ensure the key is constructed correctly and added to the map
+						if kanji != "" && hiraganaReading != "" {
+							key := kanji + "|" + hiraganaReading
+							enamDictMap[key] = line
+							logf("DEBUG: Added ENAMDICT entry - Key: %s, Line: %s", key, line)
+							entryCount++
+						}
 					}
 				}
 				logf("DEBUG: ENAMDICT preload complete. Lines read: %d, entries: %d", lineCount, entryCount)
@@ -230,9 +234,16 @@ func InitDictionaries(jmdictPath, enamdictPath string) error {
 			reading := rest[:close]
 			// Normalize reading to hiragana for the key
 			hiraganaReading := katakanaToHiragana(reading)
-			key := kanji + "|" + hiraganaReading
-			enamDictMap[key] = line
-			entryCount++
+			// Refine extraction of kanji and reading
+			kanji = strings.TrimSpace(kanji)
+			reading = strings.TrimSpace(reading)
+			// Ensure kanji and reading are trimmed and non-empty before adding to the map
+			if kanji != "" && reading != "" {
+				key := kanji + "|" + hiraganaReading
+				enamDictMap[key] = line
+				logf("DEBUG: Added ENAMDICT entry - Key: %s, Line: %s", key, line)
+				entryCount++
+			}
 			if lineCount%100000 == 0 {
 				logf("DEBUG: ENAMDICT lines read: %d, entries: %d", lineCount, entryCount)
 			}
@@ -241,12 +252,9 @@ func InitDictionaries(jmdictPath, enamdictPath string) error {
 		logf("ERROR: Could not open ENAMDICT: %v", err)
 	}
 	logf("DEBUG: Finished ENAMDICT preload.")
-	if jmdictPath != "" {
-		jmPath = jmdictPath
-	}
-	if enamdictPath != "" {
-		enamPath = enamdictPath
-	}
+	// Updated InitDictionaries to accept paths for JMdict and ENAMDICT files
+	jmPath = jmdictPath
+	enamPath = enamdictPath
 	// No heavy preloading here; we read on-demand to keep memory usage low.
 	// Validate paths exist
 	if _, err := os.Stat(jmPath); err != nil {

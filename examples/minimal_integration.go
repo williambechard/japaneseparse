@@ -3,12 +3,13 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"japaneseparse/pkg/parser"
 )
 
 // Minimal example for integrating into your Japanese language interpreter
-func main() {
+func exampleMain() {
 	// Initialize parser once (typically in your interpreter's init)
 	p, err := parser.New()
 	if err != nil {
@@ -26,7 +27,7 @@ func main() {
 
 	// Your interpreter can now access:
 	fmt.Printf("Original: %s\n", result.Text)
-	fmt.Printf("Tokens: %d\n", result.TokenCount)
+	fmt.Printf("Tokens: %d\n", len(result.Tokens))
 
 	// Process each word for your interpreter logic
 	for i, token := range result.Tokens {
@@ -44,10 +45,16 @@ func main() {
 	}
 
 	// For debugging: get human-readable format
-	if false { // Enable for debugging
-		readable := p.FormatHumanReadable(result)
-		fmt.Println("\nDetailed analysis:")
-		fmt.Println(readable)
+	// Enable human-readable output for debugging
+	readable := p.FormatHumanReadable(result)
+	fmt.Println("\nDetailed analysis:")
+	fmt.Println(readable)
+
+	// Write the human-readable output to a file
+	outputFile := "logs/human_readable_output.txt"
+	err = os.WriteFile(outputFile, []byte(readable), 0644)
+	if err != nil {
+		log.Fatalf("Failed to write human-readable output: %v", err)
 	}
 }
 

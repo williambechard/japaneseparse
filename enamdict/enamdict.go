@@ -38,8 +38,9 @@ func parseEnamdictLine(line string) (EnamdictEntry, bool) {
 	// POS and Meaning
 	posStart := strings.Index(after, "/(")
 	posEnd := strings.Index(after, ") ")
+	// Adjusted to handle cases where POS and Meaning are not properly extracted
 	if posStart >= 0 && posEnd > posStart {
-		entry.POS = after[posStart+2 : posEnd]
+		entry.POS = strings.TrimSpace(after[posStart+2 : posEnd])
 		entry.Meaning = strings.TrimSpace(after[posEnd+2:])
 	} else {
 		// Fallback: just meaning after last /

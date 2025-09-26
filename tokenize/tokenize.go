@@ -12,15 +12,21 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ikawaha/kagome-dict/ipa"
+	"github.com/ikawaha/kagome/v2/tokenizer"
+
 	"japaneseparse/ingest"
 	"japaneseparse/kanji"
 	"japaneseparse/logger"
 	"japaneseparse/model"
-
-	"github.com/ikawaha/kagome-dict/ipa"
-	"github.com/ikawaha/kagome/v2/tokenizer"
 )
 
+// Ensure Token is imported from the centralized model package
+// import (
+// 	"japaneseparse/model"
+// )
+
+// Use the centralized Token struct
 // Token represents a token / morpheme produced by the tokenizer.
 type Token = model.Token
 
@@ -61,8 +67,6 @@ type Kanjidic2Root struct {
 
 // Add this to the type definition:
 var _ = xml.Name{Local: "kanjidic2"}
-
-type DictionaryEntry = model.DictionaryEntry
 
 // InitKanjidic2 parses kanjidic2.xml and builds kanji→readings map
 func InitKanjidic2(path string) error {
@@ -348,7 +352,7 @@ func FormatFuriganaBracketsOnly(pairs [][2]string) string {
 }
 
 // getFuriganaFromDictionary tries to align kanji and reading using JMdict entry if available
-func getFuriganaFromDictionary(surface string, entry DictionaryEntry) string {
+func getFuriganaFromDictionary(surface string, entry model.DictionaryEntry) string {
 	if len(entry.Kanji) == 0 || len(entry.Readings) == 0 {
 		return ""
 	}
@@ -456,6 +460,35 @@ func convertKagomeTokens(ktoks []tokenizer.Token) []Token {
 			InflectionForm: infForm,
 			FuriganaText:   formatFuriganaBracketsOnly(getFuriganaString(kt.Surface, reading)),
 			FuriganaLemma:  formatFuriganaBracketsOnly(getFuriganaString(lemma, reading)),
+		}
+		// Assign roles based on POS or other attributes
+		if strings.Contains(pos, "名詞") && strings.Contains(pos, "代名詞") {
+			t.Role = "subject"
+		} else if strings.Contains(pos, "名詞") && strings.Contains(pos, "一般") {
+			t.Role = "object"
+		} else if strings.Contains(pos, "動詞") {
+			t.Role = "verb"
+		}
+		// Debugging: Log token details and assigned roles
+		logger.Logf("DEBUG: Token details: %+v", t)
+		logger.Logf("DEBUG: Assigned role: %s", t.Role)
+		// Debugging: Log decision-making for role assignment
+		logger.Logf("DEBUG: Evaluating token for role assignment: Text=%s, POS=%s", t.Text, t.POS)
+		if strings.Contains(pos, "名詞") && strings.Contains(pos, "代名詞") {
+			t.Role = "subject"
+			logger.Logf("DEBUG: Assigned role 'subject' to token: %s", t.Text)
+		} else if strings.Contains(pos, "名詞") && strings.Contains(pos, "一般") {
+			t.Role = "object"
+			logger.Logf("DEBUG: Assigned role 'object' to token: %s", t.Text)
+		} else if strings.Contains(pos, "動詞") {
+			t.Role = "verb"
+			logger.Logf("DEBUG: Assigned role 'verb' to token: %s", t.Text)
+		} else {
+			logger.Logf("DEBUG: No role assigned to token: %s", t.Text)
+		}
+		// Debugging: Log tokens that fail role assignment
+		if t.Role == "" {
+			logger.Logf("DEBUG: Token did not receive a role: Text=%s, POS=%s, Lemma=%s", t.Text, t.POS, t.Lemma)
 		}
 		out = append(out, t)
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 // Quick test to verify the new library API works
-func main() {
+func testApiMain() {
 	fmt.Println("Testing Japanese Text Parser Library API...")
 
 	// Test 1: Basic initialization
@@ -27,7 +27,7 @@ func main() {
 	}
 
 	fmt.Printf("✓ Parsed: %s\n", result.Text)
-	fmt.Printf("  - Tokens: %d\n", result.TokenCount)
+	fmt.Printf("  - Tokens: %d\n", len(result.Tokens))
 	fmt.Printf("  - Definitions: %d\n", result.DefinitionsFound)
 	fmt.Printf("  - Sentence ID: %s\n", result.SentenceID)
 

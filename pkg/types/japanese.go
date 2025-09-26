@@ -35,6 +35,10 @@ type Token struct {
 	Auxiliaries      []Token  `json:"auxiliaries,omitempty"`
 	MergedIndices    []int    `json:"merged_indices,omitempty"`
 	ConjugationLabel string   `json:"conjugation_label,omitempty"`
+
+	// Added fields for grammatical roles and relationships
+	Role     string `json:"role,omitempty"`     // Grammatical role (e.g., subject, object, predicate)
+	Relation []int  `json:"relation,omitempty"` // Token IDs this token relates to
 }
 
 // DictionaryEntry represents dictionary lookup information
@@ -73,7 +77,10 @@ type Clause struct {
 
 // ClauseRoles represents the roles of tokens within a clause
 type ClauseRoles struct {
-	Tokens []int `json:"tokens"`
+	Tokens  []int  `json:"tokens"`
+	Subject *[]int `json:"subject,omitempty"`
+	Object  *[]int `json:"object,omitempty"`
+	Verb    *int   `json:"verb,omitempty"`
 }
 
 // LexEntry represents a lexical entry during analysis
