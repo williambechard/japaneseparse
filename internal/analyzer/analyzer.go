@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -97,7 +98,11 @@ func (ja *JapaneseAnalyzer) AnalyzeText(text string) (*types.SentenceAnalysis, e
 	// Tokenize
 	tokens, err := ja.tokenize(&sentence)
 	if err != nil {
-		return nil, fmt.Errorf("tokenization failed: %w", err)
+		return nil, fmt.Errorf("failed to tokenize sentence: %w", err)
+	}
+
+	if ja.config.Debug {
+		logger.Logf("DEBUG: Tokenization result for sentence ID %s: %+v", sentence.ID, tokens)
 	}
 
 	// Merge verb auxiliaries
@@ -289,9 +294,71 @@ func (ja *JapaneseAnalyzer) convertToSentenceAnalysis(sentence *ingest.Sentence,
 						End:   clause.End,
 						Type:  string(clause.Type),
 						Roles: types.ClauseRoles{
-							Tokens: clause.Roles.Tokens,
+							Tokens:  clause.Roles.Tokens,
+							Subject: clause.Roles.Subject,
+							Object:  clause.Roles.Object,
+							Verb:    clause.Roles.Verb,
 						},
 					}
+
+					// Debugging: Log clause roles and type
+					logger.Logf("DEBUG: Clause %d-%d, Type: %s, Roles: %v", clause.Start, clause.End, clause.Type, clause.Roles.Tokens)
+
+					// Write clause analysis to a JSON file for debugging
+					debugData := map[string]interface{}{
+						"start": clause.Start,
+						"end":   clause.End,
+						"type":  clause.Type,
+						"roles": clause.Roles.Tokens,
+					}
+					// Add debug logs before and after file writing
+					logger.Logf("DEBUG: Attempting to write clause log to %s", fmt.Sprintf("%s/debug_clause_%d.json", ja.config.Output.LogsDir, i))
+					// Normalize LogsDir to avoid trailing slashes
+					logsDir := strings.TrimRight(ja.config.Output.LogsDir, "/\\")
+					// Use filepath.Join to construct paths
+					clauseLogPath := filepath.Join(logsDir, fmt.Sprintf("debug_clause_%d.json", i))
+					logger.LogJSON("DEBUG", clauseLogPath, debugData)
+				}
+
+				// Aggregate all clause data into a single grammar.json file
+				// Ensure logsDir is defined for grammar.json aggregation
+				logsDir := strings.TrimRight(ja.config.Output.LogsDir, "/\\")
+				if logsDir == "" {
+					logsDir = "logs" // Default to 'logs' if empty
+				}
+				// Enhance clause data with additional details
+				var allClauses []map[string]interface{}
+				for _, clause := range clauseSlice {
+					clauseData := map[string]interface{}{
+						"start": clause.Start,
+						"end":   clause.End,
+						"type":  clause.Type,
+						"roles": clause.Roles.Tokens,
+					}
+					// Add metadata if available
+					if clause.Roles.Subject != nil && len(*clause.Roles.Subject) > 0 {
+						clauseData["subject"] = *clause.Roles.Subject
+					}
+					if clause.Roles.Object != nil && len(*clause.Roles.Object) > 0 {
+						clauseData["object"] = *clause.Roles.Object
+					}
+					if clause.Roles.Verb != nil {
+						clauseData["verb"] = *clause.Roles.Verb
+					}
+					allClauses = append(allClauses, clauseData)
+				}
+				logger.LogJSON(logsDir, "grammar", allClauses)
+
+				// Debug logs for grammar.json generation
+				logger.Logf("DEBUG: Writing grammar.json to %s", filepath.Join(logsDir, "grammar.json"))
+				logger.Logf("DEBUG: Preparing to write grammar.json. Clause count: %d", len(allClauses))
+				for i, clause := range allClauses {
+					logger.Logf("DEBUG: Clause %d: %+v", i, clause)
+				}
+				if err := logger.LogJSON(logsDir, "grammar", allClauses); err != nil {
+					logger.Logf("ERROR: Failed to write grammar.json: %v", err)
+				} else {
+					logger.Logf("DEBUG: Successfully wrote grammar.json")
 				}
 			}
 		}
@@ -357,6 +424,15 @@ func (ja *JapaneseAnalyzer) saveLogs(sentenceID string, originalTokens, mergedTo
 	humanReadable := ja.generateHumanReadableOutput(result, false)
 	if err := ja.saveTextFile(logDir, sentenceID+"_human_readable_output", humanReadable); err != nil {
 		return fmt.Errorf("saving human readable output: %w", err)
+	}
+
+	// Log the LogsDir path for debugging
+	logger.Logf("DEBUG: LogsDir path: %s", ja.config.Output.LogsDir)
+	// Check if the directory exists
+	if _, err := os.Stat(ja.config.Output.LogsDir); os.IsNotExist(err) {
+		logger.Logf("ERROR: LogsDir does not exist: %s", ja.config.Output.LogsDir)
+	} else {
+		logger.Logf("DEBUG: LogsDir exists: %s", ja.config.Output.LogsDir)
 	}
 
 	return nil
@@ -456,8 +532,53 @@ func (ja *JapaneseAnalyzer) generateHumanReadableOutput(result *types.SentenceAn
 				output.WriteString(fmt.Sprintf(" (%s)", clause.Type))
 			}
 			output.WriteString("\n")
+
+			// Add roles and tokens
+			if clause.Roles.Subject != nil {
+				output.WriteString(fmt.Sprintf("   Subject: %v\n", *clause.Roles.Subject))
+			}
+			if clause.Roles.Object != nil {
+				output.WriteString(fmt.Sprintf("   Object: %v\n", *clause.Roles.Object))
+			}
+			if clause.Roles.Verb != nil {
+				output.WriteString(fmt.Sprintf("   Verb: %d\n", *clause.Roles.Verb))
+			}
+			output.WriteString(fmt.Sprintf("   Tokens: %v\n", clause.Roles.Tokens))
+
+			// Debugging: Log roles for each clause
+			logger.Logf("DEBUG: Clause %d roles: Subject=%v, Object=%v, Verb=%v, Tokens=%v", i+1, clause.Roles.Subject, clause.Roles.Object, clause.Roles.Verb, clause.Roles.Tokens)
+
+			// Debugging: Log tokens mapped to clause roles
+			logger.Logf("DEBUG: Mapping tokens to clause roles: Tokens=%v", clause.Roles.Tokens)
+			if clause.Roles.Subject != nil {
+				logger.Logf("DEBUG: Subject tokens: %v", *clause.Roles.Subject)
+			} else {
+				logger.Logf("DEBUG: No subject tokens assigned")
+			}
+			if clause.Roles.Object != nil {
+				logger.Logf("DEBUG: Object tokens: %v", *clause.Roles.Object)
+			} else {
+				logger.Logf("DEBUG: No object tokens assigned")
+			}
+			if clause.Roles.Verb != nil {
+				logger.Logf("DEBUG: Verb token: %d", *clause.Roles.Verb)
+			} else {
+				logger.Logf("DEBUG: No verb token assigned")
+			}
+
+			// Debugging: Log skipped tokens during clause role mapping
+			for _, tokenID := range clause.Roles.Tokens {
+				if tokenID == 0 {
+					logger.Logf("DEBUG: Skipped token during clause role mapping: TokenID=%d", tokenID)
+				}
+			}
 		}
 		output.WriteString("\n")
+	}
+
+	// Debugging: Log roles before generating human-readable output
+	for i, clause := range result.Analysis.Structure.Clauses {
+		logger.Logf("DEBUG: Before output generation - Clause %d roles: Subject=%v, Object=%v, Verb=%v, Tokens=%v", i+1, clause.Roles.Subject, clause.Roles.Object, clause.Roles.Verb, clause.Roles.Tokens)
 	}
 
 	return output.String()

@@ -9,7 +9,7 @@ import (
 )
 
 // Example showing how to integrate the parser into a larger Japanese language interpreter
-func main() {
+func libraryUsageMain() {
 	// Example 1: Basic integration - no logs, just analysis
 	fmt.Println("=== Example 1: Basic Usage ===")
 	basicExample()
@@ -38,7 +38,7 @@ func basicExample() {
 	}
 
 	fmt.Printf("Analyzed: %s\n", result.Text)
-	fmt.Printf("Found %d tokens with %d definitions\n", result.TokenCount, result.DefinitionsFound)
+	fmt.Printf("Found %d tokens with %d definitions\n", len(result.Tokens), result.DefinitionsFound)
 
 	// Show basic token information
 	for i, token := range result.Tokens {

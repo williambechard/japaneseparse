@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"japaneseparse/ingest"
+	"japaneseparse/logger"
 	"japaneseparse/model"
 )
 
@@ -65,6 +66,12 @@ type Clause struct {
 
 // Analyze performs grammar/structure analysis over the lexicon entries.
 func Analyze(ctx context.Context, sentence ingest.Sentence, entries []LexEntry) (Analysis, error) {
+	// Debugging: Log the entries being analyzed
+	fmt.Printf("DEBUG: Entries for analysis: %+v\n", entries)
+
+	// Debugging: Log the initial sentence structure
+	fmt.Printf("DEBUG: Initial sentence: %+v\n", sentence)
+
 	if ctx.Err() != nil {
 		fmt.Println("[ANALYZE] Context error:", ctx.Err())
 		// Log and continue instead of returning
@@ -73,7 +80,10 @@ func Analyze(ctx context.Context, sentence ingest.Sentence, entries []LexEntry) 
 	found := 0
 	for _, e := range entries {
 		if len(e.Definitions) > 0 {
-			found++
+			// Exclude tokens like verbs from the definitions count
+			if e.Token.Role == "subject" || e.Token.Role == "object" {
+				found++
+			}
 		}
 	}
 
@@ -82,8 +92,8 @@ func Analyze(ctx context.Context, sentence ingest.Sentence, entries []LexEntry) 
 	clauseStart := 0
 	for i, e := range entries {
 		if e.Token.Text == "。" || e.Token.Text == "、" {
-			clause := Clause{Start: clauseStart, End: i, Roles: ClauseRole{Tokens: make([]int, i-clauseStart)}}
-			for j := clauseStart; j < i; j++ {
+			clause := Clause{Start: clauseStart, End: i + 1, Roles: ClauseRole{Tokens: make([]int, i-clauseStart+1)}}
+			for j := clauseStart; j <= i; j++ {
 				clause.Roles.Tokens[j-clauseStart] = j
 			}
 			// Discourse/connective analysis: look for conjunctions before clause boundary
@@ -107,7 +117,52 @@ func Analyze(ctx context.Context, sentence ingest.Sentence, entries []LexEntry) 
 	}
 
 	// For each clause, assign grammatical roles
-	// ...existing code for grammatical role assignment...
+	// Enhance role assignment logic to better capture grammatical relationships
+	for i := range clauses {
+		clause := &clauses[i]
+
+		// Assign subject, verb, and object roles based on token properties
+		for j := clause.Start; j < clause.End; j++ {
+			token := entries[j].Token
+
+			// Debugging: Log token details and role field
+			logger.Logf("DEBUG: Token %d details: %+v", j, token)
+			logger.Logf("DEBUG: Token %d role: %s", j, token.Role)
+
+			// Use the Role field to determine grammatical roles
+			switch token.Role {
+			case "subject":
+				if clause.Roles.Subject == nil {
+					clause.Roles.Subject = &[]int{}
+				}
+				*clause.Roles.Subject = append(*clause.Roles.Subject, j)
+				logger.Logf("DEBUG: Assigned Subject role to token %d", j)
+			case "object":
+				if clause.Roles.Object == nil {
+					clause.Roles.Object = &[]int{}
+				}
+				*clause.Roles.Object = append(*clause.Roles.Object, j)
+				logger.Logf("DEBUG: Assigned Object role to token %d", j)
+			case "verb":
+				if clause.Roles.Verb == nil {
+					clause.Roles.Verb = new(int)
+					*clause.Roles.Verb = j
+				}
+				logger.Logf("DEBUG: Assigned Verb role to token %d", j)
+			}
+		}
+
+		// Debugging: Log assigned roles for each clause
+		fmt.Printf("DEBUG: Clause %d-%d, Roles: Subject=%v, Verb=%v, Object=%v\n",
+			clause.Start, clause.End, clause.Roles.Subject, clause.Roles.Verb, clause.Roles.Object)
+
+		// Set clause type based on connectives or other heuristics
+		if clause.Connective != "" {
+			clause.Type = SubordinateClause
+		} else {
+			clause.Type = MainClause
+		}
+	}
 
 	return Analysis{
 		SentenceID:    sentence.ID,

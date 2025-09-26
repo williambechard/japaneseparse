@@ -6,6 +6,7 @@ import (
 
 	"japaneseparse/internal/analyzer"
 	"japaneseparse/internal/config"
+	"japaneseparse/model"
 	"japaneseparse/pkg/types"
 )
 
@@ -76,49 +77,12 @@ func NewWithConfig(cfg *Config) (*Parser, error) {
 
 // ParseResult contains the complete analysis result
 type ParseResult struct {
-	Text             string   `json:"text"`              // Original input text
-	SentenceID       string   `json:"sentence_id"`       // Unique identifier for this analysis
-	TokenCount       int      `json:"token_count"`       // Number of tokens found
-	DefinitionsFound int      `json:"definitions_found"` // Number of tokens with dictionary definitions
-	Tokens           []Token  `json:"tokens"`            // Detailed token analysis
-	Clauses          []Clause `json:"clauses"`           // Grammatical clause structure
-	ProcessedAt      string   `json:"processed_at"`      // When the analysis was performed
-}
-
-// Token represents a single morphological unit with all analysis data
-type Token struct {
-	// Basic morphological information
-	Text      string `json:"text"`       // Original text as it appears
-	Lemma     string `json:"lemma"`      // Dictionary base form
-	Reading   string `json:"reading"`    // Katakana reading
-	POS       string `json:"pos"`        // Part of speech tag
-	Position  int    `json:"position"`   // Token position in sentence
-	StartChar int    `json:"start_char"` // Character start position
-	EndChar   int    `json:"end_char"`   // Character end position
-
-	// Dictionary and meaning information
-	Meanings   []string `json:"meanings"`    // English definitions
-	Furigana   string   `json:"furigana"`    // Reading aids for kanji
-	DictSource string   `json:"dict_source"` // Dictionary source (JMdict, ENAMDICT, etc.)
-
-	// Grammatical information
-	InflectionType string `json:"inflection_type"` // How the word can change form
-	InflectionForm string `json:"inflection_form"` // Current inflected form
-	IsConjugated   bool   `json:"is_conjugated"`   // Whether this token is conjugated
-	Conjugation    string `json:"conjugation"`     // Conjugation description (e.g. "past tense")
-
-	// Auxiliary and compound information
-	Auxiliaries    []Token `json:"auxiliaries"`     // Helper verbs/particles merged with this token
-	MergedIndices  []int   `json:"merged_indices"`  // Original token indices that were merged
-	HasAuxiliaries bool    `json:"has_auxiliaries"` // Whether this token has auxiliary components
-}
-
-// Clause represents a grammatical clause within the sentence
-type Clause struct {
-	StartToken int    `json:"start_token"` // Starting token index
-	EndToken   int    `json:"end_token"`   // Ending token index
-	Type       string `json:"type"`        // Clause type (main, subordinate, etc.)
-	TokenCount int    `json:"token_count"` // Number of tokens in this clause
+	Text             string         `json:"text"`              // Original input text
+	SentenceID       string         `json:"sentence_id"`       // Unique identifier for this analysis
+	DefinitionsFound int            `json:"definitions_found"` // Number of tokens with dictionary definitions
+	Tokens           []model.Token  `json:"tokens"`            // Detailed token analysis
+	Clauses          []types.Clause `json:"clauses"`           // Grammatical clause structure
+	ProcessedAt      string         `json:"processed_at"`      // When the analysis was performed
 }
 
 // Parse analyzes Japanese text and returns the complete analysis
@@ -135,7 +99,7 @@ func (p *Parser) Parse(text string) (*ParseResult, error) {
 }
 
 // ParseSimple returns just the essential information for basic processing
-func (p *Parser) ParseSimple(text string) ([]Token, error) {
+func (p *Parser) ParseSimple(text string) ([]model.Token, error) {
 	result, err := p.Parse(text)
 	if err != nil {
 		return nil, err
@@ -177,7 +141,6 @@ func (p *Parser) FormatHumanReadable(result *ParseResult) string {
 
 	output.WriteString("=== Japanese Text Analysis ===\n")
 	output.WriteString(fmt.Sprintf("Text: %s\n", result.Text))
-	output.WriteString(fmt.Sprintf("Tokens: %d\n", result.TokenCount))
 	output.WriteString(fmt.Sprintf("Definitions found: %d\n\n", result.DefinitionsFound))
 
 	output.WriteString("=== Token Analysis ===\n")
@@ -206,7 +169,7 @@ func (p *Parser) FormatHumanReadable(result *ParseResult) string {
 			output.WriteString(fmt.Sprintf("   Meanings: %s\n", strings.Join(token.Meanings, "; ")))
 		}
 
-		if token.Conjugation != "" {
+		if len(token.Conjugation) > 0 {
 			output.WriteString(fmt.Sprintf("   Conjugation: %s\n", token.Conjugation))
 		}
 
@@ -224,13 +187,14 @@ func (p *Parser) FormatHumanReadable(result *ParseResult) string {
 		output.WriteString("\n")
 	}
 
+	// Add grammatical analysis to human-readable output
 	if len(result.Clauses) > 0 {
-		output.WriteString("=== Clause Structure ===\n")
+		output.WriteString("=== Grammatical Analysis ===\n")
 		for i, clause := range result.Clauses {
-			output.WriteString(fmt.Sprintf("Clause %d: tokens %d-%d", i+1, clause.StartToken, clause.EndToken))
-			if clause.Type != "" {
-				output.WriteString(fmt.Sprintf(" (%s)", clause.Type))
-			}
+			output.WriteString(fmt.Sprintf("Clause %d: tokens %d-%d", i+1, clause.Start, clause.End))
+			output.WriteString(fmt.Sprintf("   TokenCount: %d\n", clause.End-clause.Start))
+			output.WriteString(fmt.Sprintf("   Type: %s\n", clause.Type))
+			output.WriteString(fmt.Sprintf("   Roles: %v\n", clause.Roles.Tokens))
 			output.WriteString("\n")
 		}
 	}
@@ -241,7 +205,7 @@ func (p *Parser) FormatHumanReadable(result *ParseResult) string {
 // convertToParseResult converts internal types to the simplified external API
 func (p *Parser) convertToParseResult(originalText string, result *types.SentenceAnalysis) *ParseResult {
 	// Convert tokens
-	tokens := make([]Token, len(result.Tokens))
+	tokens := make([]model.Token, len(result.Tokens))
 	for i, token := range result.Tokens {
 		meanings := []string{}
 		if len(token.DictionaryEntry.Glosses) > 0 {
@@ -249,14 +213,14 @@ func (p *Parser) convertToParseResult(originalText string, result *types.Sentenc
 		}
 
 		// Convert auxiliaries
-		auxiliaries := make([]Token, len(token.Auxiliaries))
+		auxiliaries := make([]model.Token, len(token.Auxiliaries))
 		for j, aux := range token.Auxiliaries {
 			auxMeanings := []string{}
 			if len(aux.DictionaryEntry.Glosses) > 0 {
 				auxMeanings = aux.DictionaryEntry.Glosses
 			}
 
-			auxiliaries[j] = Token{
+			auxiliaries[j] = model.Token{
 				Text:       aux.Text,
 				Lemma:      aux.Lemma,
 				Reading:    aux.Reading,
@@ -267,7 +231,7 @@ func (p *Parser) convertToParseResult(originalText string, result *types.Sentenc
 			}
 		}
 
-		tokens[i] = Token{
+		tokens[i] = model.Token{
 			Text:           token.Text,
 			Lemma:          token.Lemma,
 			Reading:        token.Reading,
@@ -281,7 +245,7 @@ func (p *Parser) convertToParseResult(originalText string, result *types.Sentenc
 			InflectionType: token.InflectionType,
 			InflectionForm: token.InflectionForm,
 			IsConjugated:   token.ConjugationLabel != "" || len(token.Auxiliaries) > 0,
-			Conjugation:    token.ConjugationLabel,
+			Conjugation:    []string{token.ConjugationLabel},
 			Auxiliaries:    auxiliaries,
 			MergedIndices:  token.MergedIndices,
 			HasAuxiliaries: len(token.Auxiliaries) > 0,
@@ -289,20 +253,18 @@ func (p *Parser) convertToParseResult(originalText string, result *types.Sentenc
 	}
 
 	// Convert clauses
-	clauses := make([]Clause, len(result.Analysis.Structure.Clauses))
+	clauses := make([]types.Clause, len(result.Analysis.Structure.Clauses))
 	for i, clause := range result.Analysis.Structure.Clauses {
-		clauses[i] = Clause{
-			StartToken: clause.Start,
-			EndToken:   clause.End,
-			Type:       clause.Type,
-			TokenCount: clause.End - clause.Start,
+		clauses[i] = types.Clause{
+			Start: clause.Start,
+			End:   clause.End,
+			Type:  clause.Type,
 		}
 	}
 
 	return &ParseResult{
 		Text:             originalText,
 		SentenceID:       result.SentenceID,
-		TokenCount:       result.TokenCount,
 		DefinitionsFound: result.DefinitionsFound,
 		Tokens:           tokens,
 		Clauses:          clauses,

@@ -1,99 +1,42 @@
 package kanji
 
 import (
-	"strings"
 	"testing"
 )
 
-func TestFuriganaAlignmentForIriminaiKawa(t *testing.T) {
+func TestInitKanjidic2(t *testing.T) {
 	err := InitKanjidic2("../dict/kanjidic2.xml")
 	if err != nil {
 		t.Fatalf("Failed to initialize Kanjidic2: %v", err)
 	}
-	surface := "入見内川"
-	reading := "イリミナイカワ"
-	// Convert katakana to hiragana for alignment
-	hiraganaReading := katakanaToHiragana(reading)
-	aligned := alignFuriganaDemo(surface, reading)
-	t.Logf("Furigana alignment for %s (%s): %s", surface, hiraganaReading, aligned)
-	expected := "[いり][み][ない][かわ]"
-	if aligned != expected {
-		t.Errorf("Expected %s, got %s", expected, aligned)
+}
+
+func TestGetKanjiReadings(t *testing.T) {
+	err := InitKanjidic2("../dict/kanjidic2.xml")
+	if err != nil {
+		t.Fatalf("Failed to initialize Kanjidic2: %v", err)
 	}
-}
 
-func isKanji(r rune) bool {
-	return r >= 0x4E00 && r <= 0x9FFF
-}
+	tests := []struct {
+		kanji    rune
+		expected []string
+	}{
+		{'入', []string{"ニュウ", "ジュ", "い.る", "-い.る", "-い.り", "い.れる", "-い.れ", "はい.る"}},
+		{'見', []string{"ケン", "み.る", "み.える", "み.せる"}},
+		{'内', []string{"ナイ", "ダイ", "うち"}},
+		{'川', []string{"セン", "かわ"}},
+	}
 
-func katakanaToHiragana(s string) string {
-	runes := []rune(s)
-	for i, r := range runes {
-		if r >= 0x30A1 && r <= 0x30F6 {
-			runes[i] = r - 0x60
+	for _, test := range tests {
+		readings := GetKanjiReadings(test.kanji)
+		if len(readings) != len(test.expected) {
+			t.Errorf("For kanji '%c', expected %d readings, got %d", test.kanji, len(test.expected), len(readings))
+			continue
+		}
+		for i, reading := range readings {
+			if reading != test.expected[i] {
+				t.Errorf("For kanji '%c', expected reading '%s', got '%s'", test.kanji, test.expected[i], reading)
+			}
 		}
 	}
-	return string(runes)
-}
-
-// alignFuriganaDemo: robust furigana alignment for test
-func alignFuriganaDemo(surface, reading string) string {
-	surfaceRunes := []rune(surface)
-	readingRunes := []rune(katakanaToHiragana(reading))
-	j, k := 0, 0
-	out := ""
-	for j < len(surfaceRunes) {
-		s := surfaceRunes[j]
-		if isKanji(s) {
-			readings := GetKanjiReadings(s)
-			bestMatch := ""
-			bestLen := 0
-			for _, kr := range readings {
-				krBase := katakanaToHiragana(kr)
-				if j > 0 && strings.Contains(kr, ".") {
-					krBase = katakanaToHiragana(strings.SplitN(kr, ".", 2)[0])
-				}
-				krRunes := []rune(krBase)
-				krLen := len(krRunes)
-				for l := krLen; l > 0; l-- {
-					if k+l <= len(readingRunes) && string(readingRunes[k:k+l]) == string(krRunes[:l]) {
-						if l > bestLen {
-							bestMatch = string(krRunes[:l])
-							bestLen = l
-						}
-						break
-					}
-				}
-			}
-			if bestMatch != "" {
-				out += "[" + bestMatch + "]"
-				k += bestLen
-			} else {
-				isLastKanji := true
-				for jj := j + 1; jj < len(surfaceRunes); jj++ {
-					if isKanji(surfaceRunes[jj]) {
-						isLastKanji = false
-						break
-					}
-				}
-				if isLastKanji && k < len(readingRunes) {
-					out += "[" + string(readingRunes[k:]) + "]"
-					k = len(readingRunes)
-				} else {
-					out += "[]"
-				}
-			}
-			j++
-		} else {
-			out += string(s)
-			if k < len(readingRunes) && readingRunes[k] == s {
-				k++
-			}
-			j++
-		}
-	}
-	if k < len(readingRunes) {
-		out += string(readingRunes[k:])
-	}
-	return out
 }

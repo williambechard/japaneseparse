@@ -19,6 +19,16 @@ type Token struct {
 	DictionaryEntry  DictionaryEntry `json:"dictionary_entry,omitempty"`
 	FuriganaText     string          `json:"furigana_text,omitempty"`
 	FuriganaLemma    string          `json:"furigana_lemma,omitempty"`
+	Role             string          `json:"role,omitempty"`
+	Relation         []int           `json:"relation,omitempty"`
+	Meanings         []string        `json:"meanings,omitempty"`
+	Furigana         string          `json:"furigana,omitempty"`
+	DictSource       string          `json:"dict_source,omitempty"`
+	HasAuxiliaries   bool            `json:"has_auxiliaries,omitempty"`
+	Position         int             `json:"position,omitempty"`
+	StartChar        int             `json:"start_char,omitempty"`
+	EndChar          int             `json:"end_char,omitempty"`
+	IsConjugated     bool            `json:"is_conjugated,omitempty"`
 }
 
 type DictionaryEntry struct {

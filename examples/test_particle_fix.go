@@ -7,7 +7,7 @@ import (
 	"japaneseparse/pkg/parser"
 )
 
-func main() {
+func testParticleFixMain() {
 	fmt.Println("Testing particle detection fix...")
 
 	// Initialize parser
