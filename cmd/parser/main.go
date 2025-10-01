@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"japaneseparse/internal/analyzer"
-	"japaneseparse/internal/config"
-	"japaneseparse/pkg/types"
+	"github.com/williambechard/japaneseparse/internal/analyzer"
+	"github.com/williambechard/japaneseparse/internal/config"
+	"github.com/williambechard/japaneseparse/pkg/types"
 )
 
 func main() {

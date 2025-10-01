@@ -8,17 +8,17 @@ import (
 	"strings"
 	"time"
 
-	"japaneseparse/analyze"
-	"japaneseparse/dictionary"
-	"japaneseparse/enamdict"
-	"japaneseparse/ingest"
-	"japaneseparse/internal/config"
-	"japaneseparse/kanji"
-	"japaneseparse/logger"
-	"japaneseparse/lookup"
-	"japaneseparse/model"
-	"japaneseparse/pkg/types"
-	"japaneseparse/tokenize"
+	"github.com/williambechard/japaneseparse/analyze"
+	"github.com/williambechard/japaneseparse/dictionary"
+	"github.com/williambechard/japaneseparse/enamdict"
+	"github.com/williambechard/japaneseparse/ingest"
+	"github.com/williambechard/japaneseparse/internal/config"
+	"github.com/williambechard/japaneseparse/kanji"
+	"github.com/williambechard/japaneseparse/logger"
+	"github.com/williambechard/japaneseparse/lookup"
+	"github.com/williambechard/japaneseparse/model"
+	"github.com/williambechard/japaneseparse/pkg/types"
+	"github.com/williambechard/japaneseparse/tokenize"
 )
 
 // JapaneseAnalyzer handles the complete Japanese text analysis pipeline

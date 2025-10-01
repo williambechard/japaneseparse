@@ -51,13 +51,30 @@ dict/enamdict.gz
 dict/kanjidic2.xml
 dict/kanjidic2.xml.gz
 
+# Dictionary binary/cache files
+dict/*.gob
+*.gob
+
 # Build artifacts
 release/
 dist/
+*.exe
+*.exe~
 
 # Temporary files
 tmp/
 temp/
+
+# Debug and log output directories
+DEBUG/
+logs/
+debug_*.json
+*.debug
+
+# Old/backup files
+*_OLD.*
+*.bak
+*.backup
 
 # Documentation build artifacts
 docs/_build/
@@ -70,4 +87,33 @@ scratch/
 # Node modules (if using any JS tools)
 node_modules/
 
+# Demo and test directories (not part of library)
 demo/
+
+# Library-specific exclusions
+# Large example outputs
+examples/output/
+examples/logs/
+examples/*.exe
+
+# Development and testing artifacts
+coverage.out
+test-*
+benchmark-*
+
+# Makefile outputs
+build/
+
+# Local configuration overrides
+config.local.yaml
+.env.local
+
+# Git-specific
+*.orig
+
+# Editor temporary files
+.#*
+#*#
+
+# Compiled static assets (if any)
+static/dist/.tmp_input.txt

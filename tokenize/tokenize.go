@@ -15,15 +15,15 @@ import (
 	"github.com/ikawaha/kagome-dict/ipa"
 	"github.com/ikawaha/kagome/v2/tokenizer"
 
-	"japaneseparse/ingest"
-	"japaneseparse/kanji"
-	"japaneseparse/logger"
-	"japaneseparse/model"
+	"github.com/williambechard/japaneseparse/ingest"
+	"github.com/williambechard/japaneseparse/kanji"
+	"github.com/williambechard/japaneseparse/logger"
+	"github.com/williambechard/japaneseparse/model"
 )
 
 // Ensure Token is imported from the centralized model package
 // import (
-// 	"japaneseparse/model"
+// 	"github.com/williambechard/japaneseparse/model"
 // )
 
 // Use the centralized Token struct

@@ -14,9 +14,9 @@ import (
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 
-	"japaneseparse/logger"
-	"japaneseparse/model"
-	"japaneseparse/tokenize"
+	"github.com/williambechard/japaneseparse/logger"
+	"github.com/williambechard/japaneseparse/model"
+	"github.com/williambechard/japaneseparse/tokenize"
 )
 
 var logEnabled = os.Getenv("JAPARSE_LOG") != "0" && os.Getenv("JAPARSE_LOG") != "false"
@@ -207,7 +207,6 @@ func InitDictionaries(jmdictPath, enamdictPath string) error {
 						if kanji != "" && hiraganaReading != "" {
 							key := kanji + "|" + hiraganaReading
 							enamDictMap[key] = line
-							logf("DEBUG: Added ENAMDICT entry - Key: %s, Line: %s", key, line)
 							entryCount++
 						}
 					}
@@ -241,7 +240,6 @@ func InitDictionaries(jmdictPath, enamdictPath string) error {
 			if kanji != "" && reading != "" {
 				key := kanji + "|" + hiraganaReading
 				enamDictMap[key] = line
-				logf("DEBUG: Added ENAMDICT entry - Key: %s, Line: %s", key, line)
 				entryCount++
 			}
 			if lineCount%100000 == 0 {

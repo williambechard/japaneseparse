@@ -2,7 +2,7 @@
 
 A comprehensive Japanese text analysis library designed for integration into larger applications. This library provides morphological analysis, dictionary lookups, and grammatical structure detection for Japanese text.
 
-**Note**: This is primarily a library component, not a standalone application. It's designed to be embedded in Japanese language interpreters, translation tools, and other language processing applications.
+**This is a Go library** - designed to be imported and used by any Go program that needs Japanese text processing capabilities.
 
 ## Features
 
@@ -14,17 +14,23 @@ A comprehensive Japanese text analysis library designed for integration into lar
 - **Flexible Output**: Both detailed analysis and simplified token extraction
 - **No External Dependencies**: Self-contained once dictionaries are provided
 
-## Quick Start
+## Installation
 
-### Installation
+### Option 1: Direct Import (if published to GitHub)
+```bash
+go get github.com/williambechard/japaneseparse
+```
+
+### Option 2: Local Development (current setup)
+Since this library may not be published yet, you can use it locally:
 
 ```bash
-# Add to your Go project
-go get github.com/yourusername/japaneseparse
-
-# In your Go code
-import "japaneseparse/pkg/parser"
+# In your go.mod file, add a replace directive:
+go mod edit -replace github.com/williambechard/japaneseparse=/path/to/this/project
+go mod tidy
 ```
+
+## Quick Start
 
 ### Basic Usage
 
@@ -34,7 +40,7 @@ package main
 import (
     "fmt"
     "log"
-    "japaneseparse/pkg/parser"
+    "github.com/williambechard/japaneseparse/pkg/parser"
 )
 
 func main() {
@@ -44,7 +50,7 @@ func main() {
         log.Fatal(err)
     }
 
-    // Parse Japanese text
+    // Parse Japanese text (comprehensive analysis)
     result, err := p.Parse("私が昨日買った本は面白いです")
     if err != nil {
         log.Fatal(err)
@@ -60,44 +66,58 @@ func main() {
 }
 ```
 
-## API Reference
+## Main Library Functions
 
-### Core Methods
+The library provides three main functions as requested:
+
+### 1. `parser.Parse(text)` - Get Complete Analysis
+Returns comprehensive analysis including tokens, meanings, readings, and grammar structure.
 
 ```go
-// Create parser with default settings
-parser, err := parser.New()
+result, err := parser.Parse("私は学校に行きます")
+// Returns: *ParseResult with full linguistic analysis
+```
 
-// Create parser with custom configuration  
-parser, err := parser.NewWithConfig(&parser.Config{
-    JMdictPath: "/path/to/JMdict_e",
-    SaveLogs:   false, // Disable logging for library use
-})
+### 2. `parser.Analyze(text)` - Get Everything (Alias for Parse)
+Identical to Parse - provides complete analysis of Japanese text.
 
-// Parse text and get complete analysis
-result, err := parser.Parse("日本語のテキスト")
+```go
+result, err := parser.Analyze("私は学校に行きます")  
+// Returns: Same as Parse - comprehensive analysis
+```
 
+### 3. `parser.GetMeaning(word)` - Get Meaning of Single Word
+Returns the first/primary meaning of a single word.
+
+```go
+meaning, err := parser.GetMeaning("学校")
+// Returns: "school"
+```
+
+## Additional Helper Functions
+
+```go
 // Get simplified token list
 tokens, err := parser.ParseSimple("日本語のテキスト") 
 
 // Extract just readings (for pronunciation)
 readings, err := parser.GetReadings("日本語のテキスト")
 
-// Extract just meanings (for translation)
+// Extract meanings for all words (for translation)
 meanings, err := parser.GetMeanings("日本語のテキスト")
 ```
 
-### Data Structures
+## Data Structures
 
 ```go
 type ParseResult struct {
-    Text             string   `json:"text"`              // Original input
-    SentenceID       string   `json:"sentence_id"`       // Unique identifier  
-    TokenCount       int      `json:"token_count"`       // Number of tokens
-    DefinitionsFound int      `json:"definitions_found"` // Tokens with definitions
-    Tokens           []Token  `json:"tokens"`            // Detailed analysis
-    Clauses          []Clause `json:"clauses"`           // Sentence structure
-    ProcessedAt      string   `json:"processed_at"`      // Processing timestamp
+    Text             string         `json:"text"`              // Original input
+    SentenceID       string         `json:"sentence_id"`       // Unique identifier  
+    TokenCount       int            `json:"token_count"`       // Number of tokens
+    DefinitionsFound int            `json:"definitions_found"` // Tokens with definitions
+    Tokens           []Token        `json:"tokens"`            // Detailed analysis
+    Clauses          []types.Clause `json:"clauses"`           // Sentence structure
+    ProcessedAt      string         `json:"processed_at"`      // Processing timestamp
 }
 
 type Token struct {
@@ -108,91 +128,18 @@ type Token struct {
     Meanings       []string `json:"meanings"`        // English definitions
     Furigana       string   `json:"furigana"`        // Reading aids
     IsConjugated   bool     `json:"is_conjugated"`   // Is this conjugated?
-    Conjugation    string   `json:"conjugation"`     // Conjugation type
+    Conjugation    []string `json:"conjugation"`     // Conjugation details
     HasAuxiliaries bool     `json:"has_auxiliaries"` // Has helper verbs?
-    // ... additional fields
-}
-```
-
-## Integration Examples
-
-### Language Interpreter Integration
-
-```go
-// In your interpreter's initialization
-parser, err := parser.New()
-if err != nil {
-    return err
-}
-
-// In your interpreter's main loop
-func processUserInput(input string) {
-    result, err := parser.Parse(input)
-    if err != nil {
-        handleParseError(err)
-        return
-    }
-    
-    // Analyze the parsed result for your interpreter logic
-    for _, token := range result.Tokens {
-        if token.POS == "名詞,固有名詞,人名,*" {
-            // User mentioned a person's name
-            handlePersonName(token.Text, token.Meanings)
-        } else if token.IsConjugated {
-            // Handle conjugated verbs
-            handleVerb(token.Lemma, token.Conjugation)
-        }
-    }
-}
-```
-
-### Batch Processing
-
-```go
-sentences := []string{
-    "おはよう",
-    "今日は何をしますか？", 
-    "映画を見たいです",
-}
-
-results := make([]*parser.ParseResult, len(sentences))
-for i, sentence := range sentences {
-    result, err := parser.Parse(sentence)
-    if err != nil {
-        log.Printf("Failed to parse: %v", err)
-        continue
-    }
-    results[i] = result
-    
-    // Process each result in your application
-    processResult(result)
-}
-```
-
-### Extract Specific Information
-
-```go
-// Get just pronunciation info
-readings, err := parser.GetReadings("こんにちは世界")
-// ["コンニチハ", "セカイ"]
-
-// Get just translation info  
-meanings, err := parser.GetMeanings("こんにちは世界")
-// [["hello", "good day"], ["world", "society"]]
-
-// Lightweight token processing
-tokens, err := parser.ParseSimple("こんにちは世界")
-for _, token := range tokens {
-    fmt.Printf("%s = %s\n", token.Text, token.Meanings[0])
+    // ... additional fields for advanced use
 }
 ```
 
 ## Configuration
 
-### Default Configuration (Recommended)
+### Default Configuration (Recommended for Library Use)
 
 ```go
-// Uses embedded dictionary paths, no logging
+// Uses default dictionary paths, no logging
 parser, err := parser.New()
 ```
 
@@ -210,6 +157,100 @@ config := &parser.Config{
 parser, err := parser.NewWithConfig(config)
 ```
 
+## Integration Examples
+
+### Language Interpreter Integration
+
+```go
+package main
+
+import (
+    "log"
+    "github.com/williambechard/japaneseparse/pkg/parser"
+)
+
+// In your interpreter's initialization
+func initializeInterpreter() (*parser.Parser, error) {
+    p, err := parser.New()
+    if err != nil {
+        return nil, err
+    }
+    return p, nil
+}
+
+// In your interpreter's main loop
+func processUserInput(p *parser.Parser, input string) {
+    // Method 1: Get complete analysis
+    result, err := p.Parse(input)
+    if err != nil {
+        log.Printf("Parse error: %v", err)
+        return
+    }
+    
+    // Method 2: Alternative - use Analyze (same functionality)
+    result, err = p.Analyze(input)
+    
+    // Method 3: Get meaning of specific words
+    for _, token := range result.Tokens {
+        meaning, err := p.GetMeaning(token.Text)
+        if err == nil {
+            log.Printf("Word: %s, Meaning: %s", token.Text, meaning)
+        }
+    }
+    
+    // Your interpreter logic here...
+    processTokensForInterpreter(result.Tokens)
+}
+```
+
+### Batch Processing
+
+```go
+func batchProcessing() {
+    p, err := parser.New()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    sentences := []string{
+        "おはよう",
+        "今日は何をしますか？", 
+        "映画を見たいです",
+    }
+
+    for _, sentence := range sentences {
+        result, err := p.Parse(sentence)
+        if err != nil {
+            log.Printf("Failed to parse '%s': %v", sentence, err)
+            continue
+        }
+        
+        // Process each sentence result
+        fmt.Printf("Processed: %s (%d tokens)\n", result.Text, result.TokenCount)
+    }
+}
+```
+
+### Extract Specific Information
+
+```go
+// Get just pronunciation info
+readings, err := parser.GetReadings("こんにちは世界")
+// Returns: ["コンニチハ", "セカイ"]
+
+// Get just translation info  
+meanings, err := parser.GetMeanings("こんにちは世界")
+// Returns: [["hello", "good day"], ["world", "society"]]
+
+// Lightweight token processing
+tokens, err := parser.ParseSimple("こんにちは世界")
+for _, token := range tokens {
+    if len(token.Meanings) > 0 {
+        fmt.Printf("%s = %s\n", token.Text, token.Meanings[0])
+    }
+}
+```
+
 ## Prerequisites
 
 You need these dictionary files in your `dict/` directory:
@@ -222,13 +263,37 @@ See [Setup Guide](docs/SETUP.md) for download instructions.
 ## Examples
 
 See the `examples/` directory for complete integration examples:
-- `minimal_integration.go`: Basic usage patterns
-- `library_usage.go`: Advanced integration techniques
+- `examples/minimal_integration/`: Basic usage patterns
+- `examples/library_usage/`: Advanced integration techniques
+- `examples/test_api/`: API verification examples
+- `examples/test_three_functions/`: Test the three main functions
+
+## Library Structure
+
+**This project is now a proper Go library** with the following structure:
+
+```
+github.com/williambechard/japaneseparse/
+├── pkg/parser/          # 🎯 Main library API - import this!
+├── examples/            # Usage examples  
+├── cmd/                 # Command-line tools (optional)
+├── internal/           # Internal implementation
+├── model/              # Data structures
+└── docs/               # Documentation
+```
+
+**Key Library Functions:**
+- `parser.Parse(text)` - Complete analysis
+- `parser.Analyze(text)` - Same as Parse (alias)  
+- `parser.GetMeaning(word)` - Single word meaning
+- `parser.ParseSimple(text)` - Just tokens
+- `parser.GetReadings(text)` - Just readings
+- `parser.GetMeanings(text)` - All meanings
 
 ## Performance Notes
 
 - **Initialization**: Create the parser once and reuse it
-- **Dictionary Loading**: Happens once during initialization
+- **Dictionary Loading**: Happens once during initialization (takes a few seconds)
 - **Thread Safety**: Create separate parser instances for concurrent use
 - **Memory Usage**: Parser keeps dictionaries in memory for fast access
 
@@ -248,14 +313,6 @@ if result.DefinitionsFound == 0 {
 }
 ```
 
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## Support
-
-This library is designed for programmatic use. For standalone command-line usage, see the `cmd/parser/` directory.
-
 ## Contributing
 
 1. Fork the repository
@@ -264,11 +321,9 @@ This library is designed for programmatic use. For standalone command-line usage
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 

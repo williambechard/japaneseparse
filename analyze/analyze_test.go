@@ -2,8 +2,8 @@ package analyze
 
 import (
 	"context"
-	"japaneseparse/ingest"
-	"japaneseparse/model"
+	"github.com/williambechard/japaneseparse/ingest"
+	"github.com/williambechard/japaneseparse/model"
 	"testing"
 )
 

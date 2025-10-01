@@ -1,8 +1,8 @@
 package parser
 
 import (
-	"japaneseparse/analyze"
-	"japaneseparse/pkg/types"
+	"github.com/williambechard/japaneseparse/analyze"
+	"github.com/williambechard/japaneseparse/pkg/types"
 )
 
 type ParseResult struct {

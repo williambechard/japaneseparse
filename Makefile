@@ -89,13 +89,25 @@ run: build
 	@echo "Running $(BINARY_NAME) with default text..."
 	./$(BUILD_DIR)/$(BINARY_NAME) -text "こんにちは世界"
 
-# Run with custom text
+# Run with custom text (using temporary file to avoid encoding issues)
 run-text: build
 	@if [ -z "$(TEXT)" ]; then \
 		echo "Usage: make run-text TEXT='your japanese text here'"; \
+		echo "Note: On Windows, use file input to avoid encoding issues"; \
 		exit 1; \
 	fi
-	./$(BUILD_DIR)/$(BINARY_NAME) -text "$(TEXT)"
+	@echo "$(TEXT)" > .tmp_input.txt
+	@./$(BUILD_DIR)/$(BINARY_NAME) -file .tmp_input.txt
+	@rm -f .tmp_input.txt
+
+# Run with text from file (recommended for Japanese input)
+run-file: build
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make run-file FILE='path/to/file.txt'"; \
+		echo "Example: echo 'こんにちは世界' > input.txt && make run-file FILE=input.txt"; \
+		exit 1; \
+	fi
+	./$(BUILD_DIR)/$(BINARY_NAME) -file "$(FILE)"
 
 # Run with configuration file
 run-config: build
@@ -176,6 +188,7 @@ help:
 	@echo "  dev-deps     - Install development tools"
 	@echo "  run          - Build and run with default text"
 	@echo "  run-text     - Build and run with custom text (use TEXT='...')"
+	@echo "  run-file     - Build and run with text from file (use FILE='...')"
 	@echo "  run-config   - Build and run with configuration file"
 	@echo "  dev          - Build and run development version"
 	@echo "  install      - Install binary to GOPATH/bin"
@@ -186,6 +199,7 @@ help:
 	@echo "  help         - Show this help message"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make run-text TEXT='日本語のテストです'"
+	@echo "  make run-text TEXT='日本語のテストです'  # May have encoding issues on Windows"
+	@echo "  echo '私は学校に行きます' > input.txt && make run-file FILE=input.txt  # Recommended"
 	@echo "  make test-coverage"
 	@echo "  make release"

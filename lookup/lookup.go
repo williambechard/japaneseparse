@@ -3,9 +3,9 @@ package lookup
 import (
 	"context"
 
-	"japaneseparse/dictionary"
-	"japaneseparse/model"
-	"japaneseparse/tokenize"
+	"github.com/williambechard/japaneseparse/dictionary"
+	"github.com/williambechard/japaneseparse/model"
+	"github.com/williambechard/japaneseparse/tokenize"
 )
 
 type LexEntry = model.LexEntry

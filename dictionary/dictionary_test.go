@@ -1,7 +1,7 @@
 package dictionary
 
 import (
-	"japaneseparse/model"
+	"github.com/williambechard/japaneseparse/model"
 	"os"
 	"strings"
 	"testing"
