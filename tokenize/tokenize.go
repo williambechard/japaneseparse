@@ -167,7 +167,39 @@ func isKana(r rune) bool {
 func getFuriganaString(surface, reading string) [][2]string {
 	result := make([][2]string, 0)
 	surfaceRunes := []rune(surface)
-	readingRunes := []rune(katakanaToHiragana(reading))
+	readingHira := katakanaToHiragana(reading)
+	readingRunes := []rune(readingHira)
+
+	// Precompute the position of the last kanji and any trailing okurigana (kana suffix)
+	lastKanjiIdx := -1
+	for idx := len(surfaceRunes) - 1; idx >= 0; idx-- {
+		if isKanji(surfaceRunes[idx]) {
+			lastKanjiIdx = idx
+			break
+		}
+	}
+	trailingKanaSuffix := ""
+	if lastKanjiIdx != -1 && lastKanjiIdx+1 < len(surfaceRunes) {
+		// Collect trailing kana after the last kanji
+		allKana := true
+		for _, r := range surfaceRunes[lastKanjiIdx+1:] {
+			if !isKana(r) {
+				allKana = false
+				break
+			}
+		}
+		if allKana {
+			trailingKanaSuffix = string(surfaceRunes[lastKanjiIdx+1:])
+		}
+	}
+	// If the reading ends with the trailing kana suffix (normalized), we'll reserve it for the kana
+	okuriLen := 0
+	if trailingKanaSuffix != "" {
+		if strings.HasSuffix(readingHira, trailingKanaSuffix) {
+			okuriLen = len([]rune(trailingKanaSuffix))
+		}
+	}
+
 	k := 0
 	for j := 0; j < len(surfaceRunes); j++ {
 		s := surfaceRunes[j]
@@ -218,8 +250,12 @@ func getFuriganaString(surface, reading string) [][2]string {
 
 				for _, v := range variants {
 					vRunes := []rune(v)
-					// normal match
-					if k+len(vRunes) <= len(readingRunes) && string(readingRunes[k:k+len(vRunes)]) == string(vRunes) {
+					// normal match; if this is the last kanji, do not consume beyond reserved okurigana
+					limit := len(readingRunes)
+					if j == lastKanjiIdx && okuriLen > 0 {
+						limit = len(readingRunes) - okuriLen
+					}
+					if k+len(vRunes) <= limit && string(readingRunes[k:k+len(vRunes)]) == string(vRunes) {
 						if len(vRunes) > bestLen {
 							bestMatch = string(readingRunes[k : k+len(vRunes)])
 							bestLen = len(vRunes)
@@ -229,7 +265,11 @@ func getFuriganaString(surface, reading string) [][2]string {
 					if j > 0 {
 						rForm := kanji.RendakuForm(v)
 						rRunes := []rune(rForm)
-						if k+len(rRunes) <= len(readingRunes) && string(readingRunes[k:k+len(rRunes)]) == rForm {
+						limit := len(readingRunes)
+						if j == lastKanjiIdx && okuriLen > 0 {
+							limit = len(readingRunes) - okuriLen
+						}
+						if k+len(rRunes) <= limit && string(readingRunes[k:k+len(rRunes)]) == rForm {
 							if len(rRunes) > bestLen {
 								bestMatch = string(readingRunes[k : k+len(rRunes)])
 								bestLen = len(rRunes)
@@ -251,8 +291,16 @@ func getFuriganaString(surface, reading string) [][2]string {
 					}
 				}
 				if isLastKanji && k < len(readingRunes) {
-					result = append(result, [2]string{string(s), string(readingRunes[k:])})
-					k = len(readingRunes)
+					// Do not consume trailing okurigana from reading
+					end := len(readingRunes)
+					if okuriLen > 0 {
+						end = end - okuriLen
+						if end < k {
+							end = k
+						}
+					}
+					result = append(result, [2]string{string(s), string(readingRunes[k:end])})
+					k = end
 				} else {
 					result = append(result, [2]string{string(s), ""})
 				}
@@ -291,6 +339,189 @@ func katakanaToHiragana(s string) string {
 	return string(runes)
 }
 
+// translatePOSToEnglish converts MeCab Japanese POS tags to English equivalents
+// Format: 品詞,品詞細分類1,品詞細分類2,品詞細分類3
+func translatePOSToEnglish(posJapanese string) string {
+	parts := strings.Split(posJapanese, ",")
+	if len(parts) == 0 {
+		return ""
+	}
+
+	// Map the main POS (first element)
+	mainPOS := parts[0]
+	var result []string
+
+	switch mainPOS {
+	case "名詞":
+		result = append(result, "noun")
+		if len(parts) > 1 {
+			switch parts[1] {
+			case "一般":
+				result = append(result, "common")
+			case "代名詞":
+				result = append(result, "pronoun")
+			case "固有名詞":
+				result = append(result, "proper noun")
+			case "サ変接続":
+				result = append(result, "verbal noun")
+			case "形容動詞語幹":
+				result = append(result, "adjectival noun stem")
+			case "副詞可能":
+				result = append(result, "adverbial")
+			case "接尾":
+				result = append(result, "suffix")
+			case "接続詞的":
+				result = append(result, "conjunctive")
+			case "数":
+				result = append(result, "number")
+			case "非自立":
+				result = append(result, "dependent")
+			case "特殊":
+				result = append(result, "special")
+			default:
+				if parts[1] != "*" {
+					result = append(result, parts[1])
+				}
+			}
+		}
+	case "動詞":
+		result = append(result, "verb")
+		if len(parts) > 1 {
+			switch parts[1] {
+			case "自立":
+				result = append(result, "independent")
+			case "非自立":
+				result = append(result, "dependent")
+			case "接尾":
+				result = append(result, "suffix")
+			default:
+				if parts[1] != "*" {
+					result = append(result, parts[1])
+				}
+			}
+		}
+	case "形容詞":
+		result = append(result, "adjective")
+		if len(parts) > 1 && parts[1] != "*" {
+			result = append(result, parts[1])
+		}
+	case "副詞":
+		result = append(result, "adverb")
+		if len(parts) > 1 {
+			switch parts[1] {
+			case "一般":
+				result = append(result, "general")
+			case "助詞類接続":
+				result = append(result, "particle-conjunctive")
+			default:
+				if parts[1] != "*" {
+					result = append(result, parts[1])
+				}
+			}
+		}
+	case "助詞":
+		result = append(result, "particle")
+		if len(parts) > 1 {
+			switch parts[1] {
+			case "格助詞":
+				result = append(result, "case marker")
+			case "係助詞":
+				result = append(result, "binding particle")
+			case "接続助詞":
+				result = append(result, "conjunctive particle")
+			case "副助詞":
+				result = append(result, "adverbial particle")
+			case "終助詞":
+				result = append(result, "sentence-ending particle")
+			case "連体化":
+				result = append(result, "nominalizer")
+			case "副詞化":
+				result = append(result, "adverbializer")
+			case "並立助詞":
+				result = append(result, "parallel marker")
+			case "特殊":
+				result = append(result, "special")
+			default:
+				if parts[1] != "*" {
+					result = append(result, parts[1])
+				}
+			}
+		}
+	case "助動詞":
+		result = append(result, "auxiliary verb")
+	case "連体詞":
+		result = append(result, "adnominal")
+	case "接続詞":
+		result = append(result, "conjunction")
+	case "感動詞":
+		result = append(result, "interjection")
+	case "接頭詞":
+		result = append(result, "prefix")
+	case "記号":
+		result = append(result, "symbol")
+		if len(parts) > 1 {
+			switch parts[1] {
+			case "句点":
+				result = append(result, "period")
+			case "読点":
+				result = append(result, "comma")
+			case "括弧開":
+				result = append(result, "open bracket")
+			case "括弧閉":
+				result = append(result, "close bracket")
+			case "空白":
+				result = append(result, "whitespace")
+			case "一般":
+				result = append(result, "general")
+			default:
+				if parts[1] != "*" {
+					result = append(result, parts[1])
+				}
+			}
+		}
+	case "フィラー":
+		result = append(result, "filler")
+	case "その他":
+		result = append(result, "other")
+		if len(parts) > 1 {
+			switch parts[1] {
+			case "間投":
+				result = append(result, "interjection")
+			default:
+				if parts[1] != "*" {
+					result = append(result, parts[1])
+				}
+			}
+		}
+	default:
+		result = append(result, mainPOS)
+	}
+
+	// Add specific details from remaining parts if meaningful
+	if len(parts) > 2 && parts[2] != "*" {
+		switch parts[2] {
+		case "一般":
+			result = append(result, "general")
+		case "サ変":
+			result = append(result, "suru-verb")
+		default:
+			// Only add if not redundant
+			add := true
+			for _, existing := range result {
+				if existing == parts[2] {
+					add = false
+					break
+				}
+			}
+			if add {
+				result = append(result, parts[2])
+			}
+		}
+	}
+
+	return strings.Join(result, ", ")
+}
+
 // formatFuriganaDisplay formats the furigana pairs for display (e.g., [kanji|furigana] or HTML ruby tags)
 func formatFuriganaDisplay(pairs [][2]string) string {
 	out := ""
@@ -305,7 +536,145 @@ func formatFuriganaDisplay(pairs [][2]string) string {
 }
 
 // formatFuriganaBracketsOnly formats furigana so only kanji readings are in brackets, with non-kanji characters outside.
+// rebalanceFuriganaPairs tries to redistribute reading across consecutive kanji
+// when the entire reading was attached to the last kanji (e.g., 学校 => [] [がっこう]).
+// It works right-to-left, matching each kanji's known readings against the suffix
+// of the remaining reading and assigns the longest match; any leftover is assigned
+// to the first kanji in the cluster. This helps with sokuon/assimilation cases
+// like がっこう where small っ isn't in the surface form.
+func rebalanceFuriganaPairs(pairs [][2]string) [][2]string {
+	i := 0
+	for i < len(pairs) {
+		// Skip non-kanji entries
+		if !(len(pairs[i][0]) > 0 && isKanji([]rune(pairs[i][0])[0])) {
+			i++
+			continue
+		}
+		// Identify a consecutive-kanji cluster [start..end]
+		start := i
+		end := i
+		for end+1 < len(pairs) {
+			if len(pairs[end+1][0]) > 0 && isKanji([]rune(pairs[end+1][0])[0]) {
+				end++
+			} else {
+				break
+			}
+		}
+		if start < end { // multi-kanji cluster
+			// If ANY kanji in the cluster have empty readings, redistribute
+			anyEmpty := false
+			for j := start; j <= end; j++ {
+				if pairs[j][1] == "" {
+					anyEmpty = true
+					break
+				}
+			}
+			if anyEmpty {
+				// Collect reading ONLY from kanji with empty readings + their neighbors
+				// Find the first empty kanji position
+				firstEmpty := -1
+				for j := start; j <= end; j++ {
+					if pairs[j][1] == "" {
+						firstEmpty = j
+						break
+					}
+				}
+				if firstEmpty == -1 {
+					// No empty, skip
+					i = end + 1
+					continue
+				}
+				// Redistribute from firstEmpty to end using right-to-left matching
+				// Collect all reading from firstEmpty onwards
+				allReading := ""
+				for j := firstEmpty; j <= end; j++ {
+					allReading += pairs[j][1]
+				}
+				remaining := []rune(allReading)
+				// Redistribute ONLY from firstEmpty to end, preserving earlier matches
+				for j := end; j >= firstEmpty; j-- {
+					sRunes := []rune(pairs[j][0])
+					if len(sRunes) == 0 {
+						continue
+					}
+					s := sRunes[0]
+					// Build normalized reading variants for this kanji
+					variants := []string{}
+					for _, kr := range kanji.GetKanjiReadings(s) {
+						full := kanji.NormalizeReading(kr)
+						if full != "" {
+							variants = append(variants, full)
+						}
+						if idx := strings.IndexRune(kr, '.'); idx >= 0 {
+							pre := kanji.NormalizeReading(kr[:idx])
+							if pre != "" {
+								found := false
+								for _, v := range variants {
+									if v == pre {
+										found = true
+										break
+									}
+								}
+								if !found {
+									variants = append(variants, pre)
+								}
+							}
+						}
+						if strings.HasPrefix(kr, "-") {
+							noLead := kanji.NormalizeReading(strings.TrimPrefix(kr, "-"))
+							if noLead != "" {
+								found := false
+								for _, v := range variants {
+									if v == noLead {
+										found = true
+										break
+									}
+								}
+								if !found {
+									variants = append(variants, noLead)
+								}
+							}
+						}
+					}
+					// Find the longest variant that matches the suffix of remaining
+					best := ""
+					remStr := string(remaining)
+					for _, v := range variants {
+						if strings.HasSuffix(remStr, v) {
+							if len([]rune(v)) > len([]rune(best)) {
+								best = v
+							}
+						}
+					}
+					if best == "" {
+						if j == firstEmpty {
+							// Assign any leftover to the first empty kanji in the sub-cluster
+							pairs[j][1] = remStr
+							remaining = []rune{}
+						} else {
+							pairs[j][1] = ""
+						}
+					} else {
+						pairs[j][1] = best
+						// Trim matched suffix
+						rl := len([]rune(best))
+						if rl <= len(remaining) {
+							remaining = remaining[:len(remaining)-rl]
+						} else {
+							remaining = []rune{}
+						}
+					}
+				}
+			}
+		}
+		i = end + 1
+	}
+	return pairs
+}
+
 func formatFuriganaBracketsOnly(pairs [][2]string) string {
+	// Attempt to rebalance readings across consecutive kanji if needed
+	pairs = rebalanceFuriganaPairs(pairs)
 	out := ""
 	lastKanjiIdx := -1
 	for i, pair := range pairs {
@@ -451,6 +820,7 @@ func convertKagomeTokens(ktoks []tokenizer.Token) []Token {
 			Text:           kt.Surface,
 			Lemma:          lemma,
 			POS:            pos,
+			POSEnglish:     translatePOSToEnglish(pos),
 			Start:          kt.Start,
 			End:            kt.End,
 			Reading:        reading,
@@ -512,16 +882,112 @@ func UpdateFuriganaFromDictionary(tokens []Token) []Token {
 				break
 			}
 		}
-		// Restore previous logic: use getFuriganaString for all tokens
+		// Use tokenizer reading for surface text by default
 		if containsKanjiText {
 			tokens[i].FuriganaText = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Text, tokens[i].Reading))
 		} else {
 			tokens[i].FuriganaText = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Text, tokens[i].Reading))
 		}
+		// For lemma, prefer dictionary reading if available (e.g., 行く -> いく)
+		lemmaReading := tokens[i].Reading
+		if len(tokens[i].DictionaryEntry.Readings) > 0 {
+			// pick the first dictionary reading that best matches lemma's okurigana suffix
+			lemmaOkuri := ""
+			lemmaRunes := []rune(tokens[i].Lemma)
+			lastKanji := -1
+			for idx := len(lemmaRunes) - 1; idx >= 0; idx-- {
+				if isKanji(lemmaRunes[idx]) {
+					lastKanji = idx
+					break
+				}
+			}
+			if lastKanji != -1 && lastKanji+1 < len(lemmaRunes) {
+				allKana := true
+				for _, r := range lemmaRunes[lastKanji+1:] {
+					if !isKana(r) {
+						allKana = false
+						break
+					}
+				}
+				if allKana {
+					lemmaOkuri = string(lemmaRunes[lastKanji+1:])
+				}
+			}
+			chosen := ""
+			for _, rd := range tokens[i].DictionaryEntry.Readings {
+				rh := katakanaToHiragana(rd)
+				if lemmaOkuri == "" || strings.HasSuffix(rh, lemmaOkuri) {
+					chosen = rh
+					break
+				}
+			}
+			if chosen == "" {
+				chosen = katakanaToHiragana(tokens[i].DictionaryEntry.Readings[0])
+			}
+			lemmaReading = chosen
+		}
 		if containsKanjiLemma {
-			tokens[i].FuriganaLemma = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Lemma, tokens[i].Reading))
+			tokens[i].FuriganaLemma = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Lemma, lemmaReading))
 		} else {
-			tokens[i].FuriganaLemma = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Lemma, tokens[i].Reading))
+			tokens[i].FuriganaLemma = formatFuriganaBracketsOnly(getFuriganaString(tokens[i].Lemma, lemmaReading))
+		}
+
+		// Post-process lemma furigana for lemmas with okurigana: if the lemma has
+		// trailing kana (okurigana) after the last kanji, prefer to reuse the
+		// bracketed kanji-reading groups from the token's FuriganaText and append
+		// the lemma's okurigana. This avoids incorrect consumption of kana from
+		// merged readings (e.g., 行きます -> Text: [い]きます, Lemma: [い]く).
+		lemmaRunes := []rune(tokens[i].Lemma)
+		lastKanji := -1
+		for idx := len(lemmaRunes) - 1; idx >= 0; idx-- {
+			if isKanji(lemmaRunes[idx]) {
+				lastKanji = idx
+				break
+			}
+		}
+		if lastKanji != -1 && lastKanji+1 < len(lemmaRunes) {
+			// collect okurigana
+			allKana := true
+			for _, r := range lemmaRunes[lastKanji+1:] {
+				if !isKana(r) {
+					allKana = false
+					break
+				}
+			}
+			if allKana {
+				okuri := string(lemmaRunes[lastKanji+1:])
+				// extract bracket groups from FuriganaText
+				bt := tokens[i].FuriganaText
+				groups := []string{}
+				pos := 0
+				for {
+					l := strings.Index(bt[pos:], "[")
+					if l == -1 {
+						break
+					}
+					r := strings.Index(bt[pos+l:], "]")
+					if r == -1 {
+						break
+					}
+					groups = append(groups, bt[pos+l:pos+l+r+1])
+					pos = pos + l + r + 1
+				}
+				// count kanji in lemma
+				kanjiCount := 0
+				for _, rr := range lemmaRunes {
+					if isKanji(rr) {
+						kanjiCount++
+					}
+				}
+				if kanjiCount > 0 && len(groups) >= kanjiCount {
+					newLemmaF := ""
+					for gi := 0; gi < kanjiCount; gi++ {
+						newLemmaF += groups[gi]
+					}
+					newLemmaF += okuri
+					tokens[i].FuriganaLemma = newLemmaF
+				}
+			}
 		}
 	}
 	return tokens

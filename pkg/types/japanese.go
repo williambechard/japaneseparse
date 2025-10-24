@@ -17,6 +17,7 @@ type Token struct {
 	Text           string `json:"text"`
 	Lemma          string `json:"lemma,omitempty"`
 	POS            string `json:"pos,omitempty"`
+	POSEnglish     string `json:"pos_english,omitempty"`
 	Start          int    `json:"start"`
 	End            int    `json:"end"`
 	Reading        string `json:"reading,omitempty"`

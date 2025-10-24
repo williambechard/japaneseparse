@@ -1,5 +1,4 @@
-# Binaries
-bin/
+# Binaries for any OS
 *.exe
 *.exe~
 *.dll
@@ -9,7 +8,7 @@ bin/
 # Test binary, built with `go test -c`
 *.test
 
-# Output of the go coverage tool
+# Go coverage output
 *.out
 coverage.html
 
@@ -35,15 +34,18 @@ go.work
 ehthumbs.db
 Thumbs.db
 
-# Logs
+# Debug and log artifacts
+DEBUG/
 logs/
 *.log
+debug_*.json
 
-# Configuration (keep examples)
+# Local configuration files
 config.yaml
 .env
+.env.local
 
-# Dictionary files (too large for git)
+# Dictionary files (too large for git - users must download)
 dict/JMdict_e
 dict/JMdict_e.gz
 dict/enamdict
@@ -55,65 +57,11 @@ dict/kanjidic2.xml.gz
 dict/*.gob
 *.gob
 
-# Build artifacts
-release/
-dist/
-*.exe
-*.exe~
-
 # Temporary files
 tmp/
 temp/
-
-# Debug and log output directories
-DEBUG/
-logs/
-debug_*.json
-*.debug
-
-# Old/backup files
-*_OLD.*
 *.bak
 *.backup
 
-# Documentation build artifacts
-docs/_build/
-docs/.doctrees/
-
-# Local development
-local/
-scratch/
-
-# Node modules (if using any JS tools)
-node_modules/
-
-# Demo and test directories (not part of library)
-demo/
-
-# Library-specific exclusions
-# Large example outputs
-examples/output/
-examples/logs/
-examples/*.exe
-
-# Development and testing artifacts
-coverage.out
-test-*
-benchmark-*
-
-# Makefile outputs
-build/
-
-# Local configuration overrides
-config.local.yaml
-.env.local
-
-# Git-specific
+# Git merge artifacts
 *.orig
-
-# Editor temporary files
-.#*
-#*#
-
-# Compiled static assets (if any)
-static/dist/.tmp_input.txt

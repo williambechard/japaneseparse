@@ -224,6 +224,7 @@ func (ja *JapaneseAnalyzer) convertToSentenceAnalysis(sentence *ingest.Sentence,
 			Text:             token.Text,
 			Lemma:            token.Lemma,
 			POS:              token.POS,
+			POSEnglish:       token.POSEnglish,
 			Start:            token.Start,
 			End:              token.End,
 			Reading:          token.Reading,
@@ -257,6 +258,7 @@ func (ja *JapaneseAnalyzer) convertToSentenceAnalysis(sentence *ingest.Sentence,
 					Text:           aux.Text,
 					Lemma:          aux.Lemma,
 					POS:            aux.POS,
+					POSEnglish:     aux.POSEnglish,
 					Start:          aux.Start,
 					End:            aux.End,
 					Reading:        aux.Reading,
@@ -315,9 +317,11 @@ func (ja *JapaneseAnalyzer) convertToSentenceAnalysis(sentence *ingest.Sentence,
 					logger.Logf("DEBUG: Attempting to write clause log to %s", fmt.Sprintf("%s/debug_clause_%d.json", ja.config.Output.LogsDir, i))
 					// Normalize LogsDir to avoid trailing slashes
 					logsDir := strings.TrimRight(ja.config.Output.LogsDir, "/\\")
-					// Use filepath.Join to construct paths
-					clauseLogPath := filepath.Join(logsDir, fmt.Sprintf("debug_clause_%d.json", i))
-					logger.LogJSON("DEBUG", clauseLogPath, debugData)
+					if logsDir == "" {
+						logsDir = "logs"
+					}
+					// Write debug clause JSON into the logs directory with a clean id (no extension)
+					_ = logger.LogJSON(logsDir, fmt.Sprintf("debug_clause_%d", i), debugData)
 				}
 
 				// Aggregate all clause data into a single grammar.json file
