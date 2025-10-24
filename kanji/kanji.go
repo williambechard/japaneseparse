@@ -8,7 +8,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"japaneseparse/logger"
+	"github.com/williambechard/japaneseparse/logger"
 )
 
 // rendaku map for shared use

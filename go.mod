@@ -1,4 +1,4 @@
-module japaneseparse
+module github.com/williambechard/japaneseparse
 
 go 1.23.0
 

@@ -1,5 +1,4 @@
-# Binaries
-bin/
+# Binaries for any OS
 *.exe
 *.exe~
 *.dll
@@ -9,7 +8,7 @@ bin/
 # Test binary, built with `go test -c`
 *.test
 
-# Output of the go coverage tool
+# Go coverage output
 *.out
 coverage.html
 
@@ -35,15 +34,18 @@ go.work
 ehthumbs.db
 Thumbs.db
 
-# Logs
+# Debug and log artifacts
+DEBUG/
 logs/
 *.log
+debug_*.json
 
-# Configuration (keep examples)
+# Local configuration files
 config.yaml
 .env
+.env.local
 
-# Dictionary files (too large for git)
+# Dictionary files (too large for git - users must download)
 dict/JMdict_e
 dict/JMdict_e.gz
 dict/enamdict
@@ -51,23 +53,15 @@ dict/enamdict.gz
 dict/kanjidic2.xml
 dict/kanjidic2.xml.gz
 
-# Build artifacts
-release/
-dist/
+# Dictionary binary/cache files
+dict/*.gob
+*.gob
 
 # Temporary files
 tmp/
 temp/
+*.bak
+*.backup
 
-# Documentation build artifacts
-docs/_build/
-docs/.doctrees/
-
-# Local development
-local/
-scratch/
-
-# Node modules (if using any JS tools)
-node_modules/
-
-demo/
+# Git merge artifacts
+*.orig

@@ -8,17 +8,17 @@ import (
 	"strings"
 	"time"
 
-	"japaneseparse/analyze"
-	"japaneseparse/dictionary"
-	"japaneseparse/enamdict"
-	"japaneseparse/ingest"
-	"japaneseparse/internal/config"
-	"japaneseparse/kanji"
-	"japaneseparse/logger"
-	"japaneseparse/lookup"
-	"japaneseparse/model"
-	"japaneseparse/pkg/types"
-	"japaneseparse/tokenize"
+	"github.com/williambechard/japaneseparse/analyze"
+	"github.com/williambechard/japaneseparse/dictionary"
+	"github.com/williambechard/japaneseparse/enamdict"
+	"github.com/williambechard/japaneseparse/ingest"
+	"github.com/williambechard/japaneseparse/internal/config"
+	"github.com/williambechard/japaneseparse/kanji"
+	"github.com/williambechard/japaneseparse/logger"
+	"github.com/williambechard/japaneseparse/lookup"
+	"github.com/williambechard/japaneseparse/model"
+	"github.com/williambechard/japaneseparse/pkg/types"
+	"github.com/williambechard/japaneseparse/tokenize"
 )
 
 // JapaneseAnalyzer handles the complete Japanese text analysis pipeline
@@ -224,6 +224,7 @@ func (ja *JapaneseAnalyzer) convertToSentenceAnalysis(sentence *ingest.Sentence,
 			Text:             token.Text,
 			Lemma:            token.Lemma,
 			POS:              token.POS,
+			POSEnglish:       token.POSEnglish,
 			Start:            token.Start,
 			End:              token.End,
 			Reading:          token.Reading,
@@ -257,6 +258,7 @@ func (ja *JapaneseAnalyzer) convertToSentenceAnalysis(sentence *ingest.Sentence,
 					Text:           aux.Text,
 					Lemma:          aux.Lemma,
 					POS:            aux.POS,
+					POSEnglish:     aux.POSEnglish,
 					Start:          aux.Start,
 					End:            aux.End,
 					Reading:        aux.Reading,
@@ -315,9 +317,11 @@ func (ja *JapaneseAnalyzer) convertToSentenceAnalysis(sentence *ingest.Sentence,
 					logger.Logf("DEBUG: Attempting to write clause log to %s", fmt.Sprintf("%s/debug_clause_%d.json", ja.config.Output.LogsDir, i))
 					// Normalize LogsDir to avoid trailing slashes
 					logsDir := strings.TrimRight(ja.config.Output.LogsDir, "/\\")
-					// Use filepath.Join to construct paths
-					clauseLogPath := filepath.Join(logsDir, fmt.Sprintf("debug_clause_%d.json", i))
-					logger.LogJSON("DEBUG", clauseLogPath, debugData)
+					if logsDir == "" {
+						logsDir = "logs"
+					}
+					// Write debug clause JSON into the logs directory with a clean id (no extension)
+					_ = logger.LogJSON(logsDir, fmt.Sprintf("debug_clause_%d", i), debugData)
 				}
 
 				// Aggregate all clause data into a single grammar.json file

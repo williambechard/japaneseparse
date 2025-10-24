@@ -3,9 +3,9 @@ package analyze
 import (
 	"context"
 	"fmt"
-	"japaneseparse/ingest"
-	"japaneseparse/logger"
-	"japaneseparse/model"
+	"github.com/williambechard/japaneseparse/ingest"
+	"github.com/williambechard/japaneseparse/logger"
+	"github.com/williambechard/japaneseparse/model"
 )
 
 type LexEntry = model.LexEntry

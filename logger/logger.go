@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 var logEnabled = os.Getenv("JAPARSE_LOG") != "0" && os.Getenv("JAPARSE_LOG") != "false"
@@ -16,14 +18,19 @@ func Logf(format string, v ...interface{}) {
 }
 
 func InitLogs(path string) error {
+	// Ensure the directory exists
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return fmt.Errorf("failed to create logs directory %s: %w", path, err)
+	}
+
 	// Clear all .json files in the logs directory
 	files, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
 	for _, f := range files {
-		if !f.IsDir() && len(f.Name()) > 5 && f.Name()[len(f.Name())-5:] == ".json" {
-			_ = os.Remove(path + "/" + f.Name())
+		if !f.IsDir() && strings.HasSuffix(f.Name(), ".json") {
+			_ = os.Remove(filepath.Join(path, f.Name()))
 		}
 	}
 	return nil

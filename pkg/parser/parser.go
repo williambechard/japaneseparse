@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"japaneseparse/internal/analyzer"
-	"japaneseparse/internal/config"
-	"japaneseparse/model"
-	"japaneseparse/pkg/types"
+	"github.com/williambechard/japaneseparse/internal/analyzer"
+	"github.com/williambechard/japaneseparse/internal/config"
+	"github.com/williambechard/japaneseparse/model"
+	"github.com/williambechard/japaneseparse/pkg/types"
 )
 
 // Parser is the main interface for Japanese text analysis
@@ -79,6 +79,7 @@ func NewWithConfig(cfg *Config) (*Parser, error) {
 type ParseResult struct {
 	Text             string         `json:"text"`              // Original input text
 	SentenceID       string         `json:"sentence_id"`       // Unique identifier for this analysis
+	TokenCount       int            `json:"token_count"`       // Number of tokens found
 	DefinitionsFound int            `json:"definitions_found"` // Number of tokens with dictionary definitions
 	Tokens           []model.Token  `json:"tokens"`            // Detailed token analysis
 	Clauses          []types.Clause `json:"clauses"`           // Grammatical clause structure
@@ -96,6 +97,12 @@ func (p *Parser) Parse(text string) (*ParseResult, error) {
 
 	// Convert to simplified external format
 	return p.convertToParseResult(text, result), nil
+}
+
+// Analyze is an alias for Parse - provides comprehensive Japanese text analysis
+// This method returns everything: tokens, meanings, readings, grammar, and clause structure
+func (p *Parser) Analyze(text string) (*ParseResult, error) {
+	return p.Parse(text)
 }
 
 // ParseSimple returns just the essential information for basic processing
@@ -133,6 +140,25 @@ func (p *Parser) GetMeanings(text string) ([][]string, error) {
 		meanings[i] = token.Meanings
 	}
 	return meanings, nil
+}
+
+// GetMeaning extracts the first meaning for a single word - useful for quick lookups
+func (p *Parser) GetMeaning(word string) (string, error) {
+	tokens, err := p.ParseSimple(word)
+	if err != nil {
+		return "", err
+	}
+
+	if len(tokens) == 0 {
+		return "", fmt.Errorf("no tokens found for word: %s", word)
+	}
+
+	// Return the first meaning of the first token
+	if len(tokens[0].Meanings) > 0 {
+		return tokens[0].Meanings[0], nil
+	}
+
+	return "", fmt.Errorf("no meanings found for word: %s", word)
 }
 
 // FormatHumanReadable returns a human-readable analysis (for debugging)
@@ -265,6 +291,7 @@ func (p *Parser) convertToParseResult(originalText string, result *types.Sentenc
 	return &ParseResult{
 		Text:             originalText,
 		SentenceID:       result.SentenceID,
+		TokenCount:       len(tokens),
 		DefinitionsFound: result.DefinitionsFound,
 		Tokens:           tokens,
 		Clauses:          clauses,
