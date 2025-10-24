@@ -19,15 +19,7 @@ A comprehensive Japanese text analysis library designed for integration into lar
 ### Step 1: Install the Library
 
 ```bash
-# Option 1: From GitHub (main branch)
 go get github.com/williambechard/japaneseparse
-
-# Option 2: From a specific branch (e.g., clean-up)
-go get github.com/williambechard/japaneseparse@clean-up
-
-# Option 3: Local development with replace directive
-go mod edit -replace github.com/williambechard/japaneseparse=/path/to/this/project
-go mod tidy
 ```
 
 ### Step 2: Set Up Dictionary Files
