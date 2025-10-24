@@ -16,19 +16,52 @@ A comprehensive Japanese text analysis library designed for integration into lar
 
 ## Installation
 
-### Option 1: Direct Import (if published to GitHub)
+### Step 1: Install the Library
+
 ```bash
+# Option 1: From GitHub (main branch)
 go get github.com/williambechard/japaneseparse
-```
 
-### Option 2: Local Development (current setup)
-Since this library may not be published yet, you can use it locally:
+# Option 2: From a specific branch (e.g., clean-up)
+go get github.com/williambechard/japaneseparse@clean-up
 
-```bash
-# In your go.mod file, add a replace directive:
+# Option 3: Local development with replace directive
 go mod edit -replace github.com/williambechard/japaneseparse=/path/to/this/project
 go mod tidy
 ```
+
+### Step 2: Set Up Dictionary Files
+
+**Required**: Download dictionary files (not included in the library due to size):
+
+1. **Create a `dict/` folder** in your project root:
+   ```bash
+   mkdir dict
+   ```
+
+2. **Download the required dictionaries**:
+   - **JMdict_e**: Download from [JMdict](http://www.edrdg.org/jmdict/j_jmdict.html)
+   - **enamdict**: Download from [ENAMDICT](http://www.edrdg.org/enamdict/enamdict_doc.html)
+   - **kanjidic2.xml**: Download from [Kanjidic2](http://www.edrdg.org/wiki/index.php/KANJIDIC_Project)
+
+3. **Place files in your `dict/` folder**:
+   ```
+   your-project/
+   ├── dict/
+   │   ├── JMdict_e
+   │   ├── enamdict
+   │   └── kanjidic2.xml
+   ├── main.go
+   └── go.mod
+   ```
+
+4. **Add to `.gitignore`** (dictionaries are large):
+   ```bash
+   echo "dict/" >> .gitignore
+   echo "logs/" >> .gitignore
+   ```
+
+See [docs/SETUP.md](docs/SETUP.md) for detailed download instructions.
 
 ## Quick Start
 
@@ -44,8 +77,16 @@ import (
 )
 
 func main() {
-    // Initialize parser
-    p, err := parser.New()
+    // Initialize parser with dictionary paths
+    config := &parser.Config{
+        JMdictPath:   "dict/JMdict_e",
+        EnamdictPath: "dict/enamdict",
+        KanjidicPath: "dict/kanjidic2.xml",
+        SaveLogs:     false,  // Set true for debugging
+        LogsDir:      "logs", // Where to save logs (if SaveLogs=true)
+    }
+    
+    p, err := parser.NewWithConfig(config)
     if err != nil {
         log.Fatal(err)
     }
@@ -61,10 +102,19 @@ func main() {
     fmt.Printf("Tokens: %d\n", result.TokenCount)
     
     for _, token := range result.Tokens {
-        fmt.Printf("- %s [%s] = %v\n", token.Text, token.Reading, token.Meanings)
+        fmt.Printf("- %s [%s] (%s)\n", 
+            token.Text, 
+            token.FuriganaText,
+            token.POSEnglish,
+        )
+        if len(token.DictionaryEntry.Glosses) > 0 {
+            fmt.Printf("  Meaning: %s\n", token.DictionaryEntry.Glosses[0])
+        }
     }
 }
 ```
+
+**Note**: If `SaveLogs=true`, the parser will automatically create the `logs/` directory (if missing) and write detailed analysis files there for debugging. Add `logs/` to your `.gitignore`.
 
 ## Main Library Functions
 
@@ -136,26 +186,52 @@ type Token struct {
 
 ## Configuration
 
-### Default Configuration (Recommended for Library Use)
-
-```go
-// Uses default dictionary paths, no logging
-parser, err := parser.New()
-```
-
-### Custom Configuration
+### Option 1: Custom Configuration (Recommended)
 
 ```go
 config := &parser.Config{
-    JMdictPath:   "/custom/path/to/JMdict_e",
-    EnamdictPath: "/custom/path/to/enamdict", 
-    KanjidicPath: "/custom/path/to/kanjidic2.xml",
-    SaveLogs:     false, // Recommended: false for library use
+    JMdictPath:   "dict/JMdict_e",
+    EnamdictPath: "dict/enamdict",
+    KanjidicPath: "dict/kanjidic2.xml",
+    SaveLogs:     false, // Set to true for debugging
+    LogsDir:      "logs", // Directory for log output
     Debug:        false,
 }
 
 parser, err := parser.NewWithConfig(config)
 ```
+
+### Option 2: Environment-Based Configuration
+
+```go
+import "os"
+
+dictPath := os.Getenv("DICT_PATH")
+if dictPath == "" {
+    dictPath = "dict" // default
+}
+
+config := &parser.Config{
+    JMdictPath:   dictPath + "/JMdict_e",
+    EnamdictPath: dictPath + "/enamdict",
+    KanjidicPath: dictPath + "/kanjidic2.xml",
+    SaveLogs:     false,
+}
+```
+
+### Configuration Fields
+
+- **JMdictPath**: Path to JMdict_e dictionary file (required)
+- **EnamdictPath**: Path to enamdict dictionary file (required)
+- **KanjidicPath**: Path to kanjidic2.xml file (required)
+- **SaveLogs**: Set `true` to generate detailed analysis logs (creates files in LogsDir)
+- **LogsDir**: Directory where logs are saved (default: "logs")
+- **Debug**: Enable debug mode for additional console output
+
+**Important**: 
+- Dictionary files must exist before initializing the parser
+- If `SaveLogs=true`, ensure the `LogsDir` directory exists or will be created
+- Add `logs/` and `dict/` to your `.gitignore`
 
 ## Integration Examples
 
@@ -253,12 +329,51 @@ for _, token := range tokens {
 
 ## Prerequisites
 
-You need these dictionary files in your `dict/` directory:
-- **JMdict_e**: Japanese-English dictionary
-- **enamdict**: Proper names dictionary  
-- **kanjidic2.xml**: Kanji information
+### Dictionary Files
 
-See [Setup Guide](docs/SETUP.md) for download instructions.
+You need these dictionary files in your `dict/` directory:
+
+| File | Description | Download Link |
+|------|-------------|---------------|
+| **JMdict_e** | Japanese-English dictionary | [JMdict Project](http://www.edrdg.org/jmdict/j_jmdict.html) |
+| **enamdict** | Proper names dictionary | [ENAMDICT Project](http://www.edrdg.org/enamdict/enamdict_doc.html) |
+| **kanjidic2.xml** | Kanji information database | [Kanjidic2 Project](http://www.edrdg.org/wiki/index.php/KANJIDIC_Project) |
+
+**Setup Steps**:
+
+```bash
+# 1. Create dict folder in your project
+mkdir dict
+
+# 2. Download files (see links above) and place in dict/
+
+# 3. Verify files exist
+ls dict/
+# Should show: JMdict_e  enamdict  kanjidic2.xml
+
+# 4. Add to .gitignore
+echo "dict/" >> .gitignore
+echo "logs/" >> .gitignore
+```
+
+See [docs/SETUP.md](docs/SETUP.md) for detailed download and setup instructions.
+
+### Project Structure
+
+Your project should look like this:
+
+```
+your-project/
+├── dict/                    # Dictionary files (gitignored)
+│   ├── JMdict_e
+│   ├── enamdict
+│   └── kanjidic2.xml
+├── logs/                    # Generated logs (if SaveLogs=true, gitignored)
+├── main.go                  # Your code
+├── go.mod
+├── go.sum
+└── .gitignore
+```
 
 ## Examples
 
